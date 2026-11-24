@@ -1,0 +1,731 @@
+openapi: 3.1.0
+info:
+  title: Samvær API
+  version: 0.1.0
+  summary: Contract between the Samvær Angular frontend and the Spring Boot backend.
+  description: |
+    API-first contract. The Angular app is built against a mock of this file
+    (`mock-api/server.mjs`), and the Spring Boot backend implements the same file.
+
+    Conventions (from the architecture doc):
+
+    - Paths are `/api/v1/<section>/<resource>`, plural nouns, kebab-case.
+    - IDs are UUIDs.
+    - Dates are ISO 8601. Calendar dates as `2026-12-24`, instants in UTC as
+      `2026-12-24T17:00:00Z`. The client shows local time.
+    - Lists are paged: `?page=0&size=20`, answered with `{ items, page, size, totalItems }`.
+    - Every shareable item carries `visibility: { scope, groupIds }`.
+    - Every item carries `allowedActions`. The frontend shows buttons from this list
+      and never works out permissions itself.
+    - Errors are RFC 9457 problem details with a stable `code`.
+    - Editable items carry `version`. A stale update answers 409 with code `common.stale-version`.
+    - An item the caller may not see answers 404, never 403, so its existence is not revealed.
+
+    All business rules (who is invited, who may see an event, who may claim what,
+    how recurring events repeat) live in the backend.
+servers:
+  - url: http://localhost:3000
+    description: Local mock (npm run mock:api)
+  - url: http://localhost:8080
+    description: Local Spring Boot backend
+security:
+  - sessionCookie: []
+tags:
+  - name: Platform
+    description: Current user and groups. Owned by the platform modules, used by every section.
+  - name: Events
+    description: Events, invites, RSVPs, the bring-list, programme and sleeping plan.
+
+paths:
+  /api/v1/me:
+    get:
+      tags: [Platform]
+      operationId: getMe
+      summary: The signed-in member
+      responses:
+        '200':
+          description: The current member.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/me/groups:
+    get:
+      tags: [Platform]
+      operationId: listMyGroups
+      summary: Groups the current member can share with or invite
+      description: Groups the member made or belongs to. Used by the visibility picker and the invite picker.
+      responses:
+        '200':
+          description: Groups, in display order.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Group' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/members:
+    get:
+      tags: [Platform]
+      operationId: listMembers
+      summary: All members, for inviting individuals
+      parameters:
+        - name: q
+          in: query
+          description: Optional name search.
+          schema: { type: string }
+      responses:
+        '200':
+          description: Members, sorted by name.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/MemberRef' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/events:
+    get:
+      tags: [Events]
+      operationId: listEvents
+      summary: Events the current member can see
+      description: |
+        Already filtered by visibility and invites. Recurring events are returned
+        as separate occurrences, each with its own id, RSVPs and bring-list.
+      parameters:
+        - name: from
+          in: query
+          description: First calendar date to include. Defaults to today.
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          description: Last calendar date to include. Open-ended when left out.
+          schema: { type: string, format: date }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Size' }
+      responses:
+        '200':
+          description: A page of events, soonest first.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Events]
+      operationId: createEvent
+      summary: Create an event
+      description: |
+        The caller becomes the host and is marked as going. With `recurrence`, the
+        backend creates the series and its upcoming occurrences, and returns the first one.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EventInput' }
+      responses:
+        '201':
+          description: The created event.
+          headers:
+            Location:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Event' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/events/{eventId}:
+    parameters:
+      - { $ref: '#/components/parameters/EventId' }
+    get:
+      tags: [Events]
+      operationId: getEvent
+      summary: One event with everything on its page
+      responses:
+        '200':
+          description: The event.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Event' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Events]
+      operationId: updateEvent
+      summary: Edit an event (host only)
+      description: |
+        Replaces the editable fields, programme and sleeping plan. The bring-list is
+        changed through its own endpoints so claims are never lost by an edit.
+        Only this occurrence changes; editing a whole series is an open question.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EventUpdate' }
+      responses:
+        '200':
+          description: The updated event.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Event' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    delete:
+      tags: [Events]
+      operationId: cancelEvent
+      summary: Cancel an event (host only)
+      responses:
+        '204': { description: Cancelled. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/events/{eventId}/rsvp:
+    parameters:
+      - { $ref: '#/components/parameters/EventId' }
+    put:
+      tags: [Events]
+      operationId: setMyRsvp
+      summary: Answer Going, Maybe or Can't
+      description: Sets or changes the current member's answer. Answering again replaces the earlier answer.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RsvpInput' }
+      responses:
+        '200':
+          description: The event with the new answer and updated counts.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Event' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/events/{eventId}/invites:
+    parameters:
+      - { $ref: '#/components/parameters/EventId' }
+    post:
+      tags: [Events]
+      operationId: inviteToEvent
+      summary: Invite members or whole groups
+      description: Adds invitees. Members already invited are ignored. Invited members get a notification.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InviteInput' }
+      responses:
+        '200':
+          description: The event with its new guest list.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Event' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/events/{eventId}/bring-items:
+    parameters:
+      - { $ref: '#/components/parameters/EventId' }
+    post:
+      tags: [Events]
+      operationId: addBringItem
+      summary: Add a meal or task to "Who brings what"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BringItemInput' }
+      responses:
+        '201':
+          description: The event with the new item.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Event' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/events/{eventId}/bring-items/{itemId}:
+    parameters:
+      - { $ref: '#/components/parameters/EventId' }
+      - { $ref: '#/components/parameters/ItemId' }
+    delete:
+      tags: [Events]
+      operationId: removeBringItem
+      summary: Remove an item from the bring-list (host or the member who added it)
+      responses:
+        '200':
+          description: The event without the item.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Event' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/events/{eventId}/bring-items/{itemId}/claim:
+    parameters:
+      - { $ref: '#/components/parameters/EventId' }
+      - { $ref: '#/components/parameters/ItemId' }
+    put:
+      tags: [Events]
+      operationId: claimBringItem
+      summary: "I'll take it"
+      description: Claims one slot of the item for the current member. Claiming again only updates the note.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ClaimInput' }
+      responses:
+        '200':
+          description: The event with the claim.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Event' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Every slot is already taken (code `events.item-full`).
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+    delete:
+      tags: [Events]
+      operationId: unclaimBringItem
+      summary: Give the item back
+      responses:
+        '200':
+          description: The event without the current member's claim.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Event' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: SESSION
+      description: |
+        Spring Security session cookie (HttpOnly, SameSite=Lax). Write requests also
+        send the X-XSRF-TOKEN header, which Angular's HttpClient adds automatically.
+
+  parameters:
+    EventId:
+      name: eventId
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/Id' }
+    ItemId:
+      name: itemId
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/Id' }
+    Page:
+      name: page
+      in: query
+      description: Zero-based page number.
+      schema: { type: integer, minimum: 0, default: 0 }
+    Size:
+      name: size
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+
+  responses:
+    BadRequest:
+      description: Invalid input. `fieldErrors` names the fields.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Unauthorized:
+      description: Not signed in.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Forbidden:
+      description: Signed in and allowed to see the item, but not to do this.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotFound:
+      description: Does not exist, or the caller may not see it.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Conflict:
+      description: Stale `version` (code `common.stale-version`).
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  schemas:
+    Id:
+      type: string
+      format: uuid
+
+    Problem:
+      description: RFC 9457 problem details.
+      type: object
+      required: [title, status, code]
+      properties:
+        type: { type: string, format: uri, default: about:blank }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        code:
+          type: string
+          description: Stable code the UI can translate, for example `events.item-full`.
+          examples: [events.item-full, common.stale-version, common.validation]
+        fieldErrors:
+          type: array
+          items:
+            type: object
+            required: [field, message]
+            properties:
+              field: { type: string }
+              message: { type: string }
+
+    MemberRef:
+      description: A member as shown next to an answer, claim or bed.
+      type: object
+      required: [id, displayName, initials]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        displayName: { type: string, examples: [Sofie] }
+        initials: { type: string, maxLength: 2, examples: [S] }
+        avatarMediaId:
+          oneOf:
+            - { $ref: '#/components/schemas/Id' }
+            - { type: 'null' }
+
+    Me:
+      allOf:
+        - { $ref: '#/components/schemas/MemberRef' }
+        - type: object
+          required: [roles]
+          properties:
+            roles:
+              type: array
+              items:
+                type: string
+                enum: [ADMIN, INNER_CIRCLE, MEMBER]
+
+    Group:
+      type: object
+      required: [id, name, memberCount, mine]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        name: { type: string, examples: [Family] }
+        memberCount: { type: integer }
+        mine:
+          type: boolean
+          description: True when the current member made the group.
+
+    VisibilityScope:
+      type: string
+      description: |
+        ONLY_ME: a private note. GROUPS: only members of `groupIds`.
+        ALL_MEMBERS: every Samvær member ("Public"), never anyone outside Samvær.
+      enum: [ONLY_ME, GROUPS, ALL_MEMBERS]
+
+    Visibility:
+      type: object
+      required: [scope, groupIds]
+      properties:
+        scope: { $ref: '#/components/schemas/VisibilityScope' }
+        groupIds:
+          description: Required and non-empty when scope is GROUPS, otherwise empty.
+          type: array
+          items: { $ref: '#/components/schemas/Id' }
+
+    RsvpStatus:
+      type: string
+      description: |
+        GOING, MAYBE or CANT ("Can't"). PENDING means invited but not answered yet,
+        and is also the current member's status on an open event they have not answered.
+      enum: [GOING, MAYBE, CANT, PENDING]
+
+    RsvpSummary:
+      type: object
+      required: [going, maybe, cant, pending]
+      properties:
+        going: { type: integer }
+        maybe: { type: integer }
+        cant: { type: integer }
+        pending: { type: integer }
+
+    Attendee:
+      type: object
+      required: [member, status]
+      properties:
+        member: { $ref: '#/components/schemas/MemberRef' }
+        status: { $ref: '#/components/schemas/RsvpStatus' }
+        note:
+          type: [string, 'null']
+          maxLength: 200
+          examples: [Arriving Saturday morning]
+
+    Recurrence:
+      description: How a series repeats. Birthdays and Christmas are YEARLY.
+      type: object
+      required: [frequency, interval]
+      properties:
+        frequency:
+          type: string
+          enum: [WEEKLY, MONTHLY, YEARLY]
+        interval:
+          type: integer
+          minimum: 1
+          default: 1
+          description: Every n weeks, months or years.
+        until:
+          type: [string, 'null']
+          format: date
+          description: Last possible date. Open-ended when null.
+
+    SeriesInfo:
+      type: object
+      required: [id, recurrence]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        recurrence: { $ref: '#/components/schemas/Recurrence' }
+
+    EventKind:
+      type: string
+      description: Only changes the label and icon in the UI.
+      enum: [GATHERING, BIRTHDAY, HOLIDAY, TRIP, OTHER]
+
+    EventAction:
+      type: string
+      enum: [edit, cancel, invite, rsvp, add-bring-item]
+
+    BringItemAction:
+      type: string
+      enum: [claim, unclaim, remove]
+
+    BringItem:
+      type: object
+      required: [id, title, slots, claimedBy, allowedActions]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        title: { type: string, maxLength: 80, examples: [Friday dinner] }
+        details:
+          type: [string, 'null']
+          maxLength: 200
+          examples: [Something for 8, ready by 19:00]
+        slots:
+          type: [integer, 'null']
+          minimum: 1
+          description: How many people can claim it. Null means anyone who wants to (for example "Everyone").
+        claimedBy:
+          type: array
+          items: { $ref: '#/components/schemas/Claim' }
+        allowedActions:
+          type: array
+          items: { $ref: '#/components/schemas/BringItemAction' }
+
+    Claim:
+      type: object
+      required: [member]
+      properties:
+        member: { $ref: '#/components/schemas/MemberRef' }
+        note:
+          type: [string, 'null']
+          maxLength: 80
+          examples: [chili]
+
+    ClaimInput:
+      type: object
+      properties:
+        note: { type: [string, 'null'], maxLength: 80 }
+
+    ProgrammeItem:
+      type: object
+      required: [startsAt, title]
+      properties:
+        startsAt: { type: string, format: date-time }
+        title: { type: string, maxLength: 120, examples: [Arrive, dinner, a quick warm-up game] }
+
+    SleepingSpot:
+      type: object
+      required: [place, guests]
+      properties:
+        place: { type: string, maxLength: 60, examples: [Guest apartment] }
+        guests:
+          type: array
+          items: { $ref: '#/components/schemas/MemberRef' }
+        note:
+          type: [string, 'null']
+          maxLength: 80
+          examples: [sofa bed]
+
+    SleepingSpotInput:
+      type: object
+      required: [place, guestIds]
+      properties:
+        place: { type: string, maxLength: 60 }
+        guestIds:
+          type: array
+          items: { $ref: '#/components/schemas/Id' }
+        note: { type: [string, 'null'], maxLength: 80 }
+
+    EventSummary:
+      description: What an event card in a list needs.
+      type: object
+      required: [id, kind, title, startsAt, endsAt, allDay, host, visibility, audienceLabel, myRsvp, rsvpSummary, bringList, allowedActions]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        kind: { $ref: '#/components/schemas/EventKind' }
+        title: { type: string, maxLength: 120, examples: [Board game weekend] }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        allDay: { type: boolean }
+        location: { type: [string, 'null'], maxLength: 120, examples: [Our house] }
+        host: { $ref: '#/components/schemas/MemberRef' }
+        visibility: { $ref: '#/components/schemas/Visibility' }
+        audienceLabel:
+          type: string
+          description: Ready-made text for who it is for, for example "Family, Best friends" or "All members".
+        series:
+          oneOf:
+            - { $ref: '#/components/schemas/SeriesInfo' }
+            - { type: 'null' }
+        myRsvp: { $ref: '#/components/schemas/RsvpStatus' }
+        rsvpSummary: { $ref: '#/components/schemas/RsvpSummary' }
+        bringList:
+          type: object
+          required: [total, taken]
+          description: Counts for "7 of 10 taken".
+          properties:
+            total: { type: integer }
+            taken: { type: integer }
+        allowedActions:
+          type: array
+          items: { $ref: '#/components/schemas/EventAction' }
+
+    Event:
+      description: Everything on an event's page.
+      allOf:
+        - { $ref: '#/components/schemas/EventSummary' }
+        - type: object
+          required: [description, attendees, bringItems, programme, sleeping, version]
+          properties:
+            description: { type: [string, 'null'], maxLength: 4000 }
+            attendees:
+              type: array
+              items: { $ref: '#/components/schemas/Attendee' }
+            bringItems:
+              type: array
+              items: { $ref: '#/components/schemas/BringItem' }
+            programme:
+              type: array
+              description: Sorted by startsAt.
+              items: { $ref: '#/components/schemas/ProgrammeItem' }
+            sleeping:
+              type: array
+              items: { $ref: '#/components/schemas/SleepingSpot' }
+            version: { type: integer }
+
+    EventPage:
+      type: object
+      required: [items, page, size, totalItems]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/EventSummary' }
+        page: { type: integer }
+        size: { type: integer }
+        totalItems: { type: integer }
+
+    EventFields:
+      type: object
+      required: [kind, title, startsAt, endsAt, allDay, visibility]
+      properties:
+        kind: { $ref: '#/components/schemas/EventKind' }
+        title: { type: string, minLength: 1, maxLength: 120 }
+        description: { type: [string, 'null'], maxLength: 4000 }
+        startsAt: { type: string, format: date-time }
+        endsAt:
+          type: string
+          format: date-time
+          description: Must be after startsAt.
+        allDay: { type: boolean }
+        location: { type: [string, 'null'], maxLength: 120 }
+        visibility: { $ref: '#/components/schemas/Visibility' }
+        programme:
+          type: array
+          items: { $ref: '#/components/schemas/ProgrammeItem' }
+        sleeping:
+          type: array
+          items: { $ref: '#/components/schemas/SleepingSpotInput' }
+
+    EventInput:
+      description: Body for creating an event.
+      allOf:
+        - { $ref: '#/components/schemas/EventFields' }
+        - type: object
+          properties:
+            recurrence:
+              oneOf:
+                - { $ref: '#/components/schemas/Recurrence' }
+                - { type: 'null' }
+            invite: { $ref: '#/components/schemas/InviteInput' }
+            bringItems:
+              type: array
+              items: { $ref: '#/components/schemas/BringItemInput' }
+
+    EventUpdate:
+      description: Body for editing an event.
+      allOf:
+        - { $ref: '#/components/schemas/EventFields' }
+        - type: object
+          required: [version]
+          properties:
+            version: { type: integer }
+
+    InviteInput:
+      description: |
+        Who to invite on top of the audience. With visibility GROUPS, every member of
+        those groups is invited automatically. With ALL_MEMBERS the event is open:
+        any member can answer, and only people invited by name or group show as PENDING.
+      type: object
+      properties:
+        memberIds:
+          type: array
+          items: { $ref: '#/components/schemas/Id' }
+        groupIds:
+          type: array
+          items: { $ref: '#/components/schemas/Id' }
+
+    RsvpInput:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [GOING, MAYBE, CANT]
+        note: { type: [string, 'null'], maxLength: 200 }
+
+    BringItemInput:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 80 }
+        details: { type: [string, 'null'], maxLength: 200 }
+        slots: { type: [integer, 'null'], minimum: 1, default: 1 }

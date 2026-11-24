@@ -1,0 +1,36 @@
+groups:
+  angular:
+    patterns:
+      - "@angular/*"
+      - "@angular-devkit/*"
+    update-types:
+      - minor
+      - patch
+
+  ngrx:
+    patterns:
+      - "@ngrx/*"
+    update-types:
+      - minor
+      - patch
+
+  testing-tooling:
+    patterns:
+      - "@types/*"
+      - jsdom
+      - typescript
+      - vitest
+    update-types:
+      - minor
+      - patch
+
+ignore:
+  - dependency-name: "typescript"
+    update-types:
+      - "version-update:semver-major"
+  - dependency-name: "@angular/*"
+    update-types:
+      - "version-update:semver-major"
+  - dependency-name: "@ngrx/*"
+    update-types:
+      - "version-update:semver-major"

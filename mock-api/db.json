@@ -1,0 +1,41 @@
+{
+    "sample-records": [
+      {
+        "id": 1,
+        "title": "Website refresh",
+        "owner": "Alex Johnson",
+        "phone": "+1-555-0100",
+        "email": "alex.johnson@example.com",
+        "createdAt": "2024-03-01T00:00:00.000Z",
+        "category": {
+          "key": "design",
+          "label": "Design"
+        }
+      },
+      {
+        "id": 2,
+        "title": "Launch checklist",
+        "owner": "Maya Chen",
+        "phone": "+1-555-0101",
+        "email": "maya.chen@example.com",
+        "createdAt": "2024-01-15T00:00:00.000Z",
+        "category": {
+          "key": "ops",
+          "label": "Operations"
+        }
+      },
+      {
+        "id": 3,
+        "title": "Support handoff",
+        "owner": "Priya Patel",
+        "phone": "+1-555-0102",
+        "email": "priya.patel@example.com",
+        "createdAt": "2023-11-05T00:00:00.000Z",
+        "category": {
+          "key": "support",
+          "label": "Support"
+        }
+      }
+    ]
+  }
+  

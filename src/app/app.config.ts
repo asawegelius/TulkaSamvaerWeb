@@ -1,6 +1,6 @@
 import { ApplicationConfig } from '@angular/core';
-import { provideHttpClient, withXhr } from '@angular/common/http';
-import { provideRouter } from '@angular/router';
+import { provideHttpClient, withXhr, withXsrfConfiguration } from '@angular/common/http';
+import { provideRouter, withComponentInputBinding } from '@angular/router';
 import { provideAnimations } from '@angular/platform-browser/animations';
 import { provideEffects } from '@ngrx/effects';
 import { provideRouterStore } from '@ngrx/router-store';
@@ -13,8 +13,9 @@ import { RouterSerializer } from '@core/routing/router-serializer';
 
 export const appConfig: ApplicationConfig = {
   providers: [
-    provideRouter(APP_ROUTES),
-    provideHttpClient(withXhr()),
+    provideRouter(APP_ROUTES, withComponentInputBinding()),
+    // Spring Security's session cookie and CSRF token, per the architecture doc.
+    provideHttpClient(withXhr(), withXsrfConfiguration({ cookieName: 'XSRF-TOKEN', headerName: 'X-XSRF-TOKEN' })),
     provideAnimations(),
     provideStore(reducers, { metaReducers }),
     provideStoreDevtools({

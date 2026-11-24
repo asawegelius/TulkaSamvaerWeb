@@ -1,0 +1,132 @@
+<form [formGroup]="form" (ngSubmit)="submit()" novalidate>
+  <sv-form-layout>
+    <section class="sv-card grid">
+      <div class="sv-field wide">
+        <label for="ev-title">Event name</label>
+        <input id="ev-title" class="sv-input" formControlName="title" maxlength="120" placeholder="Board game weekend"
+               [attr.aria-invalid]="(form.controls.title.touched && form.controls.title.invalid) || !!errorFor('title')" />
+        @if ((form.controls.title.touched && form.controls.title.invalid) || errorFor('title')) {
+          <span class="sv-error">{{ errorFor('title') ?? 'Give the event a name.' }}</span>
+        }
+      </div>
+      <div class="sv-field">
+        <label for="ev-kind">Kind</label>
+        <select id="ev-kind" class="sv-input" formControlName="kind">
+          @for (k of kinds; track k[0]) { <option [value]="k[0]">{{ k[1] }}</option> }
+        </select>
+      </div>
+      <div class="sv-field">
+        <label for="ev-location">Where</label>
+        <input id="ev-location" class="sv-input" formControlName="location" maxlength="120" placeholder="Our house" />
+      </div>
+    </section>
+
+    <section class="sv-card grid">
+      <h2 class="wide">When</h2>
+      <div class="sv-field">
+        <label for="ev-start-date">Starts</label>
+        <input id="ev-start-date" type="date" class="sv-input" formControlName="startDate" (change)="onStartDateChange()" />
+      </div>
+      @if (!form.controls.allDay.value) {
+        <div class="sv-field">
+          <label for="ev-start-time">At</label>
+          <input id="ev-start-time" type="time" class="sv-input" formControlName="startTime" />
+        </div>
+      }
+      <div class="sv-field">
+        <label for="ev-end-date">Ends</label>
+        <input id="ev-end-date" type="date" class="sv-input" formControlName="endDate" />
+      </div>
+      @if (!form.controls.allDay.value) {
+        <div class="sv-field">
+          <label for="ev-end-time">At</label>
+          <input id="ev-end-time" type="time" class="sv-input" formControlName="endTime" />
+        </div>
+      }
+      @if (errorFor('startsAt') || errorFor('endsAt')) {
+        <span class="sv-error wide">{{ errorFor('startsAt') ?? errorFor('endsAt') }}</span>
+      }
+      <label class="check wide"><input type="checkbox" formControlName="allDay" /> All day</label>
+      <div class="sv-field wide">
+        <label for="ev-repeat">Repeats</label>
+        <select id="ev-repeat" class="sv-input" formControlName="frequency">
+          <option value="">Does not repeat</option>
+          @for (f of frequencies; track f[0]) { <option [value]="f[0]">{{ f[1] }}</option> }
+        </select>
+        @if (isEdit() && form.controls.frequency.value) {
+          <span class="sv-meta">Changes apply to this date only.</span>
+        }
+      </div>
+    </section>
+
+    <section class="sv-card">
+      <div class="sv-field">
+        <label for="ev-description">About</label>
+        <textarea id="ev-description" class="sv-input" formControlName="description" maxlength="4000"
+                  placeholder="What is the plan?"></textarea>
+      </div>
+    </section>
+
+    <section class="sv-card">
+      <sv-visibility-picker formControlName="visibility" [groups]="groups()" />
+      @if (errorFor('visibility')) { <span class="sv-error">{{ errorFor('visibility') }}</span> }
+    </section>
+
+    @if (!isEdit()) {
+      <section class="sv-card" formArrayName="bringItems">
+        <h2>Who brings what</h2>
+        <p class="sv-meta">Meals and tasks people can claim with one tap.</p>
+        @for (row of bringItems.controls; track row; let i = $index) {
+          <div class="row" [formGroupName]="i">
+            <input class="sv-input" formControlName="title" placeholder="Friday dinner" aria-label="What is needed" />
+            <input class="sv-input" formControlName="details" placeholder="Something for 8" aria-label="Details" />
+            <select class="sv-input narrow" formControlName="slots" aria-label="How many people">
+              <option [ngValue]="1">1 person</option><option [ngValue]="2">2 people</option>
+              <option [ngValue]="3">3 people</option><option [ngValue]="null">Everyone</option>
+            </select>
+            <button type="button" class="sv-btn sv-btn--quiet" (click)="bringItems.removeAt(i)">Remove</button>
+          </div>
+        }
+        <button type="button" class="sv-btn sv-btn--quiet" (click)="addBring()">+ Add something</button>
+      </section>
+    }
+
+    <section class="sv-card" formArrayName="programme">
+      <h2>Programme</h2>
+      @for (row of programme.controls; track row; let i = $index) {
+        <div class="row" [formGroupName]="i">
+          <input type="date" class="sv-input narrow" formControlName="date" aria-label="Day" />
+          <input type="time" class="sv-input narrow" formControlName="time" aria-label="Time" />
+          <input class="sv-input" formControlName="title" placeholder="Arrive and dinner" aria-label="What happens" />
+          <button type="button" class="sv-btn sv-btn--quiet" (click)="programme.removeAt(i)">Remove</button>
+        </div>
+      }
+      <button type="button" class="sv-btn sv-btn--quiet" (click)="addProgramme()">+ Add to programme</button>
+    </section>
+
+    <section class="sv-card" formArrayName="sleeping">
+      <h2>Who sleeps where</h2>
+      @for (row of sleeping.controls; track row; let i = $index) {
+        <div class="sleep" [formGroupName]="i">
+          <div class="row">
+            <input class="sv-input" formControlName="place" placeholder="Guest apartment" aria-label="Place" />
+            <input class="sv-input" formControlName="note" placeholder="sofa bed" aria-label="Note" />
+            <button type="button" class="sv-btn sv-btn--quiet" (click)="sleeping.removeAt(i)">Remove</button>
+          </div>
+          <div class="chips" role="group" aria-label="Guests">
+            @for (m of members(); track m.id) {
+              <button type="button" class="sv-chip" [attr.aria-pressed]="row.value.guestIds?.includes(m.id)"
+                      (click)="toggleGuest(i, m.id)">{{ m.displayName }}</button>
+            }
+          </div>
+        </div>
+      }
+      <button type="button" class="sv-btn sv-btn--quiet" (click)="addSleeping()">+ Add a place to sleep</button>
+    </section>
+
+    <ng-container slot="actions">
+      <button type="button" class="sv-btn sv-btn--secondary" (click)="cancel.emit()">Cancel</button>
+      <button type="submit" class="sv-btn" [disabled]="saving()">{{ isEdit() ? 'Save changes' : 'Create event' }}</button>
+    </ng-container>
+  </sv-form-layout>
+</form>

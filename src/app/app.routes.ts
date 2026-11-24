@@ -1,22 +1,18 @@
 import { Routes } from '@angular/router';
+import { SECTIONS, sortedSections } from '@core/sections/sections';
 
 /**
- * Represents the routes of the application.
- * Each route contains the path to the feature route configuration.
- * @constant {Routes}
+ * Lazy routes built from the section registry. Adding a section means adding
+ * one entry to SECTIONS, not editing this file.
  */
-export const APP_ROUTES: Routes = [
-  {
-    path: '',
-    pathMatch: 'full',
-    redirectTo: 'sample-records'
-  },
-  {
-    path: 'sample-records',
-    loadChildren: () => import('./features/sample-records/sample-records.routes').then(m => m.SAMPLE_RECORDS_ROUTES)
-  },
-  {
-    path: '**',
-    redirectTo: 'sample-records'
-  }
-];
+export function buildRoutes(sections = SECTIONS): Routes {
+  const ordered = sortedSections(sections);
+  const home = ordered[0]?.key ?? '';
+  return [
+    { path: '', pathMatch: 'full', redirectTo: home },
+    ...ordered.map((section) => ({ path: section.key, title: `${section.title} · Samvær`, loadChildren: section.loadRoutes })),
+    { path: '**', redirectTo: home },
+  ];
+}
+
+export const APP_ROUTES: Routes = buildRoutes();

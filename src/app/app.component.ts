@@ -1,16 +1,14 @@
-import { Component, ChangeDetectionStrategy } from '@angular/core';
-import { SideNavigationComponent } from './layout/side-navigation/side-navigation.component';
+import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { AppShellComponent } from '@layout/app-shell/app-shell.component';
 
 /**
  * The root component of the application.
- * @class
  */
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [SideNavigationComponent],
-  templateUrl: './app.component.html',
-  changeDetection: ChangeDetectionStrategy.Eager,
-  styleUrls: ['./app.component.scss']
+  imports: [AppShellComponent],
+  template: '<app-shell />',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class AppComponent { }
+export class AppComponent {}

@@ -6,7 +6,9 @@
     "ignoreDeprecations": "6.0",
     "paths": {
       "@core/*": ["src/app/core/*"],
-      "@shared/*": ["src/app/shared/*"]
+      "@shared/*": ["src/app/shared/*"],
+      "@layout/*": ["src/app/layout/*"],
+      "@features/*": ["src/app/features/*"]
     },
     "outDir": "./dist/out-tsc",
     "forceConsistentCasingInFileNames": true,

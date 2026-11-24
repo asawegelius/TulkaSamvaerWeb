@@ -20,6 +20,7 @@ Use these checks from the CI workflow:
 
 - `build`
 - `test`
+- `contract`
 
 Approvals stay off on purpose because a pull request author cannot approve their own pull request. In a solo workflow, PR + CI gives control without creating a dead end.
 

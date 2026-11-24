@@ -203,9 +203,9 @@ export function createSeed(today = new Date()) {
     },
   ];
 
-  // Juleaften as a yearly series: this year and the next two.
+  // Juleaften as a yearly series: this year and next.
   const year = today.getMonth() === 11 && today.getDate() > 24 ? today.getFullYear() + 1 : today.getFullYear();
-  [0, 1, 2].forEach((k) => {
+  [0, 1].forEach((k) => {
     const start = new Date(year + k, 11, 24, 15, 0);
     const end = new Date(year + k, 11, 24, 23, 0);
     events.push({

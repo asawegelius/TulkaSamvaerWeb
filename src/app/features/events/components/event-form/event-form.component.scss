@@ -1,0 +1,10 @@
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+.wide { grid-column: 1 / -1; }
+h2 { margin: 0 0 4px; }
+.check { display: inline-flex; align-items: center; gap: 8px; font-size: 15px; }
+.check input { accent-color: var(--sv-primary); width: 18px; height: 18px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+.row .sv-input { flex: 1 1 160px; width: auto; }
+.row .narrow { flex: 0 1 150px; }
+.sleep { border-top: 1px solid var(--sv-line); padding-top: 10px; margin-bottom: 10px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }

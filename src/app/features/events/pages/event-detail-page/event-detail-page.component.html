@@ -1,0 +1,76 @@
+@if (event(); as e) {
+  <sv-page-layout [heading]="e.title">
+    <a slot="back" class="sv-btn sv-btn--quiet back" routerLink="/events"><sv-icon name="back" [size]="18" />All events</a>
+    <div slot="eyebrow" class="eyebrow">
+      <span class="sv-tag sv-tag--event">{{ kindLabel() }}</span>
+      @if (repeatLabel()) { <span class="sv-meta inline"><sv-icon name="repeat" [size]="14" />{{ repeatLabel() }}</span> }
+    </div>
+    <p slot="meta" class="sv-muted meta">
+      {{ when() }}@if (e.location) { · {{ e.location }} } · planned by {{ e.host.displayName }}
+      <span class="lock"><sv-icon name="lock" [size]="13" />{{ e.audienceLabel }}</span>
+    </p>
+    <div slot="actions" class="actions">
+      @if (can('edit')) { <a class="sv-btn sv-btn--secondary" routerLink="edit">Edit</a> }
+      @if (can('cancel')) { <button type="button" class="sv-btn sv-btn--danger" [disabled]="facade.saving()" (click)="cancelEvent()">Cancel event</button> }
+    </div>
+
+    @if (facade.error(); as error) {
+      <div class="sv-card notice" role="alert">
+        <span>{{ error.message }}</span>
+        <button type="button" class="sv-btn sv-btn--quiet sv-btn--small" (click)="facade.dismissError()">OK</button>
+      </div>
+    }
+
+    <div class="layout">
+      <div class="col">
+        <section class="sv-card">
+          @if (can('rsvp')) {
+            <h2>Are you coming?</h2>
+            <app-rsvp-control [status]="e.myRsvp" [eventTitle]="e.title" [disabled]="facade.pending() === 'rsvp'" (answer)="answer($event)" />
+          }
+          @if (e.description) { <p class="desc">{{ e.description }}</p> }
+          <app-attendee-list [attendees]="e.attendees" />
+        </section>
+
+        <app-bring-list [items]="e.bringItems" [canAdd]="can('add-bring-item')" [pending]="facade.pending()"
+                        (claim)="claim($event)" (unclaim)="unclaim($event)" (remove)="remove($event)" (add)="add($event)" />
+      </div>
+
+      <div class="col">
+        @if (e.programme.length) {
+          <section class="sv-card">
+            <h2>Programme</h2>
+            <ul class="sv-list prog">
+              @for (p of e.programme; track $index) {
+                <li><span class="sv-meta t">{{ time(p.startsAt) }}</span><span>{{ p.title }}</span></li>
+              }
+            </ul>
+          </section>
+        }
+        @if (e.sleeping.length) {
+          <section class="sv-card">
+            <h2>Sleeping</h2>
+            <ul class="sv-list">
+              @for (s of e.sleeping; track $index) {
+                <li class="sleep">
+                  <b>{{ s.place }}</b>
+                  <span class="guests">
+                    @for (g of s.guests; track g.id) { <span class="g"><sv-avatar [person]="g" [size]="22" />{{ g.displayName }}</span> }
+                    @if (s.note) { <span class="sv-meta">({{ s.note }})</span> }
+                  </span>
+                </li>
+              }
+            </ul>
+          </section>
+        }
+      </div>
+    </div>
+  </sv-page-layout>
+} @else if (facade.detailError(); as error) {
+  <sv-page-layout heading="Event not found">
+    <a slot="back" class="sv-btn sv-btn--quiet back" routerLink="/events"><sv-icon name="back" [size]="18" />All events</a>
+    <p class="sv-muted" role="alert">{{ error }}</p>
+  </sv-page-layout>
+} @else {
+  <sv-page-layout heading="Loading…"><p class="sv-muted" aria-live="polite">Loading the event…</p></sv-page-layout>
+}

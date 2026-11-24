@@ -1,0 +1,65 @@
+<section class="sv-card" aria-labelledby="bring-heading">
+  <header class="head">
+    <h2 id="bring-heading">Who brings what</h2>
+    <span class="sv-meta">{{ taken() }} of {{ items().length }} taken</span>
+  </header>
+
+  <ul class="sv-list">
+    @for (item of items(); track item.id) {
+      <li class="item">
+        <div class="what">
+          <b>{{ item.title }}</b>
+          @if (item.details) { <span class="sv-meta">{{ item.details }}</span> }
+          @if (slotText(item)) { <span class="sv-meta">{{ slotText(item) }}</span> }
+        </div>
+        <div class="who">
+          @for (claim of item.claimedBy; track claim.member.id) {
+            <span class="claim"><sv-avatar [person]="claim.member" [size]="24" />{{ claim.member.displayName }}@if (claim.note) {: {{ claim.note }}}</span>
+          }
+          @if (item.allowedActions.includes('claim')) {
+            <button type="button" class="sv-btn sv-btn--small" [disabled]="busy(item.id)" (click)="claim.emit(item.id)">I'll take it</button>
+          }
+          @if (item.allowedActions.includes('unclaim')) {
+            <button type="button" class="sv-btn sv-btn--quiet sv-btn--small" [disabled]="busy(item.id)" (click)="unclaim.emit(item.id)">Give it back</button>
+          }
+          @if (item.allowedActions.includes('remove')) {
+            <button type="button" class="sv-btn sv-btn--quiet sv-btn--small icon" [disabled]="busy(item.id)"
+                    [attr.aria-label]="'Remove ' + item.title" (click)="remove.emit(item.id)"><sv-icon name="close" [size]="16" /></button>
+          }
+        </div>
+      </li>
+    } @empty {
+      <li class="sv-meta">Nothing on the list yet.</li>
+    }
+  </ul>
+
+  @if (canAdd()) {
+    @if (adding()) {
+      <form class="add" (ngSubmit)="submit()">
+        <div class="sv-field grow">
+          <label for="bring-title">What is needed?</label>
+          <input id="bring-title" class="sv-input" name="title" [(ngModel)]="draft.title" required maxlength="80" placeholder="Saturday lunch" />
+        </div>
+        <div class="sv-field grow">
+          <label for="bring-details">Details</label>
+          <input id="bring-details" class="sv-input" name="details" [(ngModel)]="draft.details" maxlength="200" placeholder="Something for 8" />
+        </div>
+        <div class="sv-field slots">
+          <label for="bring-slots">People</label>
+          <select id="bring-slots" class="sv-input" name="slots" [(ngModel)]="draft.slots">
+            <option [ngValue]="1">1</option>
+            <option [ngValue]="2">2</option>
+            <option [ngValue]="3">3</option>
+            <option [ngValue]="null">Everyone</option>
+          </select>
+        </div>
+        <div class="buttons">
+          <button type="submit" class="sv-btn" [disabled]="addBusy()">Add</button>
+          <button type="button" class="sv-btn sv-btn--secondary" (click)="adding.set(false)">Cancel</button>
+        </div>
+      </form>
+    } @else {
+      <button type="button" class="sv-btn sv-btn--quiet add-btn" (click)="adding.set(true)"><sv-icon name="plus" [size]="18" />Add something</button>
+    }
+  }
+</section>

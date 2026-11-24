@@ -1,0 +1,15 @@
+<div class="shell">
+  <a class="skip sv-visually-hidden" href="#main">Skip to content</a>
+  <nav class="side" aria-label="Sections">
+    <a class="logo" routerLink="/">Samvær</a>
+    @for (section of sections; track section.key) {
+      <a class="nv" [routerLink]="'/' + section.key" routerLinkActive="on" ariaCurrentWhenActive="page">
+        <sv-icon [name]="section.icon" />
+        <span>{{ section.title }}</span>
+      </a>
+    }
+  </nav>
+  <main id="main" class="main">
+    <router-outlet />
+  </main>
+</div>

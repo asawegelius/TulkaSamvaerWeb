@@ -1,0 +1,35 @@
+// Design tokens from the Tulka style guide (modern Nordic: white walls, black
+// text, deep green linen as the action colour). Light and dark come from the
+// device setting via light-dark(). Layouts and components use only these tokens,
+// so a section never picks its own colours.
+:root {
+  color-scheme: light dark;
+
+  // Ground and text
+  --sv-bg: light-dark(#f7f7f5, #141414);
+  --sv-surface: light-dark(#ffffff, #1e1e1d);
+  --sv-sunken: light-dark(#f0eeea, #191918);
+  --sv-ink: light-dark(#161616, #f2f1ee);
+  --sv-muted: light-dark(#5f5d59, #a8a59f);
+  --sv-line: light-dark(#e1ded8, #34332f);
+
+  // Main action colour: deep green
+  --sv-primary: light-dark(#34483b, #a9c2b0);
+  --sv-on-primary: light-dark(#ffffff, #142019);
+
+  // Section colours (tags and calendar chips)
+  --sv-stay: light-dark(#cfe0d7, #2f4538);
+  --sv-on-stay: light-dark(#1d3528, #e3efe8);
+  --sv-studio: light-dark(#dcc6a3, #6f5a3a);
+  --sv-on-studio: light-dark(#3a2a14, #fbf3e3);
+  --sv-event: light-dark(#b3332b, #e58a80);
+  --sv-on-event: light-dark(#ffffff, #2a0d0a);
+  --sv-recipe: light-dark(#2b2b2b, #d7d4ce);
+  --sv-on-recipe: light-dark(#ffffff, #161616);
+  --sv-garden: light-dark(#4a7a38, #a9cf95);
+  --sv-on-garden: light-dark(#ffffff, #16260f);
+
+  --sv-danger: var(--sv-event);
+  --sv-radius: 10px;
+  --sv-font: 'Hanken Grotesk', system-ui, sans-serif;
+}

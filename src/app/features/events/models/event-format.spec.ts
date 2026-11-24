@@ -1,23 +1,26 @@
-import { formatWhen, toDateInput, toInstant, toTimeInput } from './event-format';
+import { fromWallTime } from '@core/time/zoned-time';
+import { formatEventWhen } from './event-format';
 
-describe('event formatting', () => {
-  const local = (y: number, m: number, d: number, hh = 0, mm = 0) => new Date(y, m - 1, d, hh, mm).toISOString();
+const CPH = 'Europe/Copenhagen';
 
-  it('shows a one-day event with its start time', () => {
-    expect(formatWhen(local(2027, 1, 15, 18), local(2027, 1, 15, 22), false)).toBe('Fri 15 Jan · 18:00');
+describe('formatEventWhen', () => {
+  const event = {
+    startsAt: fromWallTime('2027-01-15', '18:00', CPH),
+    endsAt: fromWallTime('2027-01-15', '22:00', CPH),
+    allDay: false,
+    timeZone: CPH,
+  };
+
+  it('shows the event in its own zone without a label for people at home', () => {
+    expect(formatEventWhen(event, CPH)).toBe('Fri 15 Jan · 18:00');
   });
 
-  it('leaves out the time for all-day events', () => {
-    expect(formatWhen(local(2026, 12, 24), local(2026, 12, 24, 23, 59), true)).toBe('Thu 24 Dec');
+  it('keeps the planned time and adds the zone for someone abroad', () => {
+    expect(formatEventWhen(event, 'America/New_York')).toMatch(/^Fri 15 Jan · 18:00 (CET|GMT\+1)$/);
   });
 
-  it('shows a weekend as a range', () => {
-    expect(formatWhen(local(2027, 1, 15, 18), local(2027, 1, 17, 15), false)).toBe('Fri 15 – Sun 17 Jan');
-  });
-
-  it('round-trips form inputs through an instant', () => {
-    const iso = toInstant('2027-01-15', '18:30');
-    expect(toDateInput(iso)).toBe('2027-01-15');
-    expect(toTimeInput(iso)).toBe('18:30');
+  it('leaves the zone out of multi-day ranges, which show no clock time', () => {
+    const weekend = { ...event, endsAt: fromWallTime('2027-01-17', '15:00', CPH) };
+    expect(formatEventWhen(weekend, 'America/New_York')).toBe('Fri 15 – Sun 17 Jan');
   });
 });

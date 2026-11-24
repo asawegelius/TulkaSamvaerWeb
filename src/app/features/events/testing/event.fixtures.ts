@@ -23,6 +23,7 @@ export function eventFixture(overrides: Partial<EventDetail> = {}): EventDetail 
     startsAt: '2027-01-15T17:00:00Z',
     endsAt: '2027-01-17T14:00:00Z',
     allDay: false,
+    timeZone: 'Europe/Copenhagen',
     location: 'Our house',
     host: ASA,
     visibility: { scope: 'GROUPS', groupIds: ['g-2'] },

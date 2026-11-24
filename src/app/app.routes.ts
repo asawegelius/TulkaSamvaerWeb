@@ -1,11 +1,12 @@
 import { Routes } from '@angular/router';
-import { SECTIONS, sortedSections } from '@core/sections/sections';
+import { SectionDefinition, sortedSections } from '@core/sections/section-definition';
+import { APP_SECTIONS } from './app.sections';
 
 /**
  * Lazy routes built from the section registry. Adding a section means adding
- * one entry to SECTIONS, not editing this file.
+ * one entry to APP_SECTIONS, not editing this file.
  */
-export function buildRoutes(sections = SECTIONS): Routes {
+export function buildRoutes(sections: readonly SectionDefinition[] = APP_SECTIONS): Routes {
   const ordered = sortedSections(sections);
   const home = ordered[0]?.key ?? '';
   return [

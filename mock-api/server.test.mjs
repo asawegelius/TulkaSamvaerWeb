@@ -9,7 +9,8 @@ import { parse } from 'yaml';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import { createMockApi } from './server.mjs';
-import { ME_ID } from './seed.mjs';
+import { ME_ID, createSeed } from './seed.mjs';
+import { addDays, fromWallTime, toWallTime } from './time.mjs';
 
 const spec = parse(readFileSync(new URL('../api/openapi.yaml', import.meta.url), 'utf8'));
 const ajv = new Ajv2020({ strict: false, allErrors: true });
@@ -27,6 +28,7 @@ const SOFIE = '00000000-0000-4000-8000-000000000003';
 const BOARD_GAMES = '00000000-0000-4000-8000-000000000201';
 const LUNCH = '00000000-0000-4000-8000-000000000303';
 const FAMILY = '00000000-0000-4000-8000-000000000101';
+const CPH = 'Europe/Copenhagen';
 
 const newApi = () => createMockApi();
 
@@ -94,7 +96,7 @@ test('only the host may edit, and a stale version gets 409', () => {
   const ev = api.handle('GET', `/api/v1/events/${BOARD_GAMES}`).body;
   const update = {
     kind: ev.kind, title: 'Board game weekend 2', description: ev.description, startsAt: ev.startsAt,
-    endsAt: ev.endsAt, allDay: ev.allDay, location: ev.location, visibility: ev.visibility,
+    endsAt: ev.endsAt, allDay: ev.allDay, timeZone: ev.timeZone, location: ev.location, visibility: ev.visibility,
     programme: ev.programme, sleeping: [], version: ev.version,
   };
   assert.equal(api.handle('PUT', `/api/v1/events/${BOARD_GAMES}`, update, SOFIE).status, 403);
@@ -106,13 +108,10 @@ test('only the host may edit, and a stale version gets 409', () => {
 
 test('creating a yearly birthday makes upcoming occurrences and invites the group', () => {
   const api = newApi();
-  const start = new Date();
-  start.setDate(start.getDate() + 20);
-  start.setHours(14, 0, 0, 0);
-  const end = new Date(start.getTime() + 3 * 3600e3);
+  const date = addDays(toWallTime(new Date().toISOString(), CPH).date, 20);
   const res = api.handle('POST', '/api/v1/events', {
-    kind: 'BIRTHDAY', title: 'Line turns 40', startsAt: start.toISOString(), endsAt: end.toISOString(),
-    allDay: false, visibility: { scope: 'GROUPS', groupIds: [FAMILY] },
+    kind: 'BIRTHDAY', title: 'Line turns 40', startsAt: fromWallTime(date, '14:00', CPH), endsAt: fromWallTime(date, '17:00', CPH),
+    allDay: false, timeZone: CPH, visibility: { scope: 'GROUPS', groupIds: [FAMILY] },
     recurrence: { frequency: 'YEARLY', interval: 1 },
     bringItems: [{ title: 'Cake' }],
   });
@@ -123,17 +122,18 @@ test('creating a yearly birthday makes upcoming occurrences and invites the grou
   assert.ok(res.body.attendees.length >= 5);
   const all = api.handle('GET', '/api/v1/events?size=100').body.items.filter((e) => e.title === 'Line turns 40');
   assert.ok(all.length >= 2, 'at least two yearly occurrences');
+  for (const e of all) assert.equal(toWallTime(e.startsAt, CPH).time, '14:00', 'every occurrence at 14:00 at home');
 });
 
 test('invalid input answers a problem with field errors', () => {
   const res = newApi().handle('POST', '/api/v1/events', {
     kind: 'GATHERING', title: '', startsAt: '2027-01-02T10:00:00Z', endsAt: '2027-01-01T10:00:00Z',
-    allDay: false, visibility: { scope: 'GROUPS', groupIds: [] },
+    allDay: false, timeZone: 'Mars/Olympus', visibility: { scope: 'GROUPS', groupIds: [] },
   });
   assert.equal(res.status, 400);
   assertSchema('Problem', res.body);
   const fields = res.body.fieldErrors.map((f) => f.field).sort();
-  assert.deepEqual(fields, ['endsAt', 'title', 'visibility.groupIds']);
+  assert.deepEqual(fields, ['endsAt', 'timeZone', 'title', 'visibility.groupIds']);
 });
 
 test('signed in as someone else changes allowedActions', () => {
@@ -141,4 +141,52 @@ test('signed in as someone else changes allowedActions', () => {
   assert.ok(!ev.allowedActions.includes('edit'));
   assert.ok(ev.allowedActions.includes('rsvp'));
   assert.notEqual(ME_ID, SOFIE);
+});
+
+test('pages through more than 50 events without gaps or repeats', () => {
+  const api = createMockApi({ seed: createSeed(new Date(), { extraEvents: 60 }) });
+  const first = api.handle('GET', '/api/v1/events?page=0&size=20').body;
+  assert.ok(first.totalItems > 60);
+  const seen = [];
+  for (let page = 0; page * 20 < first.totalItems; page++) {
+    const res = api.handle('GET', `/api/v1/events?page=${page}&size=20`).body;
+    assertSchema('EventPage', res);
+    assert.equal(res.page, page);
+    seen.push(...res.items.map((e) => e.id));
+  }
+  assert.equal(seen.length, first.totalItems);
+  assert.equal(new Set(seen).size, seen.length);
+  assert.equal(api.handle('GET', '/api/v1/events?page=99&size=20').body.items.length, 0);
+});
+
+test('a repeating event keeps its wall-clock time across daylight saving', () => {
+  const api = newApi();
+  const res = api.handle('POST', '/api/v1/events', {
+    kind: 'BIRTHDAY', title: 'Spring birthday', allDay: false, timeZone: CPH,
+    startsAt: fromWallTime('2027-01-09', '13:00', CPH), endsAt: fromWallTime('2027-01-09', '16:00', CPH),
+    visibility: { scope: 'ONLY_ME', groupIds: [] }, recurrence: { frequency: 'MONTHLY', interval: 6 },
+  });
+  const all = api.handle('GET', '/api/v1/events?from=2027-01-01T00:00:00Z&to=2028-01-01T00:00:00Z').body.items
+    .filter((e) => e.title === 'Spring birthday');
+  assert.deepEqual(all.map((e) => toWallTime(e.startsAt, CPH)), [
+    { date: '2027-01-09', time: '13:00' },
+    { date: '2027-07-09', time: '13:00' },
+  ]);
+  assert.notEqual(all[0].startsAt.slice(11, 16), all[1].startsAt.slice(11, 16), 'UTC time differs, wall time does not');
+  assert.equal(res.body.timeZone, CPH);
+});
+
+test('all-day events start and end at midnight in their zone', () => {
+  const api = newApi();
+  const body = {
+    kind: 'OTHER', title: 'Garden day', allDay: true, timeZone: CPH, visibility: { scope: 'ONLY_ME', groupIds: [] },
+    startsAt: fromWallTime('2027-05-01', '00:00', CPH), endsAt: fromWallTime('2027-05-02', '00:00', CPH),
+  };
+  assert.equal(api.handle('POST', '/api/v1/events', body).status, 201);
+  const bad = api.handle('POST', '/api/v1/events', { ...body, endsAt: fromWallTime('2027-05-01', '23:59', CPH) });
+  assert.equal(bad.status, 400);
+});
+
+test('me includes the member time zone', () => {
+  assert.equal(newApi().handle('GET', '/api/v1/me').body.timeZone, CPH);
 });

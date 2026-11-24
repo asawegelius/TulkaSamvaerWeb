@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { AvatarComponent } from '@shared/components/avatar/avatar.component';
 import { IconComponent } from '@shared/components/icon/icon.component';
 import { BringItem, BringItemInput } from '../../models/event.models';
+import { pendingKeys } from '../../state/pending-keys';
 
 /**
  * "Who brings what". Open slots stay visible until someone takes them.
@@ -19,8 +20,9 @@ import { BringItem, BringItemInput } from '../../models/event.models';
 export class BringListComponent {
   readonly items = input.required<BringItem[]>();
   readonly canAdd = input(false);
-  /** Key of the change waiting for the API, for example `item:<id>` or `add-item`. */
-  readonly pending = input<string | null>(null);
+  readonly eventId = input.required<string>();
+  /** Keys of changes waiting for the API (see pending-keys.ts). */
+  readonly pending = input<readonly string[]>([]);
 
   readonly claim = output<string>();
   readonly unclaim = output<string>();
@@ -32,7 +34,11 @@ export class BringListComponent {
   protected draft = { title: '', details: '', slots: 1 as number | null };
 
   protected busy(itemId: string): boolean {
-    return this.pending() === `item:${itemId}`;
+    return this.pending().includes(pendingKeys.item(itemId));
+  }
+
+  protected addBusy(): boolean {
+    return this.pending().includes(pendingKeys.addItem(this.eventId()));
   }
 
   protected slotText(item: BringItem): string {

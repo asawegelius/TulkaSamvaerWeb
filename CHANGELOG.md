@@ -13,6 +13,9 @@ The format is inspired by Keep a Changelog, and this repository uses Semantic Ve
 - Mock API that implements the contract, with schema tests.
 - Events feature: list, detail with RSVP and bring-list claims, create and edit with the visibility picker.
 - Section registry, app shell, page and form layouts, and the style guide's tokens as the theme.
+- App-wide rules for dates and time zones (`docs/dates-and-time-zones.md`), shared contract types and `core/time` helpers.
+- Paging on the events list ("Show more").
+- `npm run lint:layers` checks the dependency rules in CI.
 
 ### Fixed
 

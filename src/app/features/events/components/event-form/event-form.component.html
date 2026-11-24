@@ -46,7 +46,14 @@
       @if (errorFor('startsAt') || errorFor('endsAt')) {
         <span class="sv-error wide">{{ errorFor('startsAt') ?? errorFor('endsAt') }}</span>
       }
-      <label class="check wide"><input type="checkbox" formControlName="allDay" /> All day</label>
+      <label class="check"><input type="checkbox" formControlName="allDay" /> All day</label>
+      <div class="sv-field wide">
+        <label for="ev-zone">Time zone</label>
+        <select id="ev-zone" class="sv-input" formControlName="timeZone">
+          @for (z of zones; track z) { <option [value]="z">{{ z }}</option> }
+        </select>
+        @if (errorFor('timeZone')) { <span class="sv-error">{{ errorFor('timeZone') }}</span> }
+      </div>
       <div class="sv-field wide">
         <label for="ev-repeat">Repeats</label>
         <select id="ev-repeat" class="sv-input" formControlName="frequency">

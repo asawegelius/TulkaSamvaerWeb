@@ -23,6 +23,11 @@ import { EventsFacade } from '../../facade/events.facade';
         <app-event-form [event]="event()" [groups]="facade.groups()" [members]="facade.members()"
                         [saving]="facade.saving()" [fieldErrors]="facade.error()?.fieldErrors ?? []"
                         (save)="save($event)" (cancel)="back()" />
+      } @else if (facade.detailError(); as error) {
+        <div class="sv-card" role="alert">
+          <p>{{ error }}</p>
+          <a class="sv-btn sv-btn--secondary" routerLink="/events">All events</a>
+        </div>
       } @else {
         <p class="sv-muted" aria-live="polite">Loading…</p>
       }

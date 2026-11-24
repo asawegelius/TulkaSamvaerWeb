@@ -223,6 +223,23 @@ export interface components {
     schemas: {
         /** Format: uuid */
         Id: string;
+        /**
+         * Format: date-time
+         * @description A moment in time, in UTC with a `Z` suffix. See docs/dates-and-time-zones.md.
+         * @example 2026-12-24T14:00:00Z
+         */
+        Instant: string;
+        /**
+         * Format: date
+         * @description A calendar date without time or zone.
+         * @example 2026-12-24
+         */
+        LocalDate: string;
+        /**
+         * @description An IANA time zone name.
+         * @example Europe/Copenhagen
+         */
+        TimeZone: string;
         /** @description RFC 9457 problem details. */
         Problem: {
             /**
@@ -255,6 +272,8 @@ export interface components {
             avatarMediaId?: components["schemas"]["Id"] | null;
         };
         Me: components["schemas"]["MemberRef"] & {
+            /** @description The member's own zone, used to show times and to work out "today". */
+            timeZone: components["schemas"]["TimeZone"];
             roles: ("ADMIN" | "INNER_CIRCLE" | "MEMBER")[];
         };
         Group: {
@@ -294,7 +313,11 @@ export interface components {
             /** @example Arriving Saturday morning */
             note?: string | null;
         };
-        /** @description How a series repeats. Birthdays and Christmas are YEARLY. */
+        /**
+         * @description How a series repeats. Birthdays and Christmas are YEARLY. Occurrences keep
+         *     the same wall-clock time in the event's `timeZone`, so 13:00 stays 13:00
+         *     across daylight saving.
+         */
         Recurrence: {
             /** @enum {string} */
             frequency: "WEEKLY" | "MONTHLY" | "YEARLY";
@@ -303,11 +326,8 @@ export interface components {
              * @default 1
              */
             interval: number;
-            /**
-             * Format: date
-             * @description Last possible date. Open-ended when null.
-             */
-            until?: string | null;
+            /** @description Last possible date, in the event's time zone. Open-ended when null. */
+            until?: components["schemas"]["LocalDate"] | null;
         };
         SeriesInfo: {
             id: components["schemas"]["Id"];
@@ -345,8 +365,7 @@ export interface components {
             note?: string | null;
         };
         ProgrammeItem: {
-            /** Format: date-time */
-            startsAt: string;
+            startsAt: components["schemas"]["Instant"];
             /**
              * @example Arrive
              * @example dinner
@@ -372,11 +391,12 @@ export interface components {
             kind: components["schemas"]["EventKind"];
             /** @example Board game weekend */
             title: string;
-            /** Format: date-time */
-            startsAt: string;
-            /** Format: date-time */
-            endsAt: string;
+            startsAt: components["schemas"]["Instant"];
+            /** @description Exclusive. For all-day events, the start of the day after the last day. */
+            endsAt: components["schemas"]["Instant"];
             allDay: boolean;
+            /** @description The zone the event was planned in. The UI shows its times in this zone. */
+            timeZone: components["schemas"]["TimeZone"];
             /** @example Our house */
             location?: string | null;
             host: components["schemas"]["MemberRef"];
@@ -413,14 +433,12 @@ export interface components {
             kind: components["schemas"]["EventKind"];
             title: string;
             description?: string | null;
-            /** Format: date-time */
-            startsAt: string;
-            /**
-             * Format: date-time
-             * @description Must be after startsAt.
-             */
-            endsAt: string;
+            startsAt: components["schemas"]["Instant"];
+            /** @description Must be after startsAt. Exclusive; for all-day events, midnight after the last day. */
+            endsAt: components["schemas"]["Instant"];
+            /** @description When true, startsAt and endsAt must be midnight in timeZone. */
             allDay: boolean;
+            timeZone: components["schemas"]["TimeZone"];
             location?: string | null;
             visibility: components["schemas"]["Visibility"];
             programme?: components["schemas"]["ProgrammeItem"][];
@@ -586,10 +604,13 @@ export interface operations {
     listEvents: {
         parameters: {
             query?: {
-                /** @description First calendar date to include. Defaults to today. */
-                from?: string;
-                /** @description Last calendar date to include. Open-ended when left out. */
-                to?: string;
+                /**
+                 * @description Events that end after this moment. Defaults to the start of today in the
+                 *     member's time zone (`Me.timeZone`).
+                 */
+                from?: components["schemas"]["Instant"];
+                /** @description Events that start before this moment. Open-ended when left out. */
+                to?: components["schemas"]["Instant"];
                 /** @description Zero-based page number. */
                 page?: components["parameters"]["Page"];
                 size?: components["parameters"]["Size"];

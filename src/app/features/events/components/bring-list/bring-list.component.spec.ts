@@ -5,6 +5,7 @@ import { SOFIE, bringItemFixture } from '../../testing/event.fixtures';
 describe('BringListComponent', () => {
   function render(items = [bringItemFixture()], canAdd = false) {
     const fixture = TestBed.createComponent(BringListComponent);
+    fixture.componentRef.setInput('eventId', 'e-1');
     fixture.componentRef.setInput('items', items);
     fixture.componentRef.setInput('canAdd', canAdd);
     fixture.detectChanges();
@@ -25,6 +26,14 @@ describe('BringListComponent', () => {
     expect(buttons(rows[2])).toEqual([]);
     expect(rows[1].textContent).toContain('Sofie: chili');
     expect(fixture.nativeElement.textContent).toContain('2 of 3 taken');
+  });
+
+  it('disables only the item that is waiting for the API', () => {
+    const fixture = render([bringItemFixture({ id: 'a' }), bringItemFixture({ id: 'b' })]);
+    fixture.componentRef.setInput('pending', ['item:b']);
+    fixture.detectChanges();
+    const buttons = Array.from<HTMLButtonElement>(fixture.nativeElement.querySelectorAll('li.item button'));
+    expect(buttons.map((b) => b.disabled)).toEqual([false, true]);
   });
 
   it('emits claim with the item id', () => {

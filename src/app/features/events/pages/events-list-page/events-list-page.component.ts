@@ -19,9 +19,9 @@ import { RsvpAnswer } from '../../models/event.models';
       @if (facade.error(); as error) {
         <p class="sv-error" role="alert">{{ error.message }}</p>
       }
-      @if (facade.listError(); as error) {
+      @if (facade.listError() && facade.events().length === 0) {
         <div class="sv-card" role="alert">
-          <p>{{ error }}</p>
+          <p>{{ facade.listError() }}</p>
           <button type="button" class="sv-btn sv-btn--secondary" (click)="facade.loadEvents()">Try again</button>
         </div>
       } @else if (facade.listLoading() && facade.events().length === 0) {
@@ -29,7 +29,7 @@ import { RsvpAnswer } from '../../models/event.models';
       } @else {
         <div class="grid">
           @for (event of facade.events(); track event.id) {
-            <app-event-card [event]="event" [busy]="facade.pending() === 'rsvp'" (answer)="answer(event.id, $event)" />
+            <app-event-card [event]="event" [busy]="facade.isPending(facade.keys.rsvp(event.id))" (answer)="answer(event.id, $event)" />
           } @empty {
             <div class="sv-card empty">
               <h2>Nothing planned yet</h2>
@@ -38,6 +38,15 @@ import { RsvpAnswer } from '../../models/event.models';
             </div>
           }
         </div>
+        @if (facade.hasMore()) {
+          <div class="more">
+            @if (facade.listError(); as error) { <p class="sv-error" role="alert">{{ error }}</p> }
+            <button type="button" class="sv-btn sv-btn--secondary" [disabled]="facade.listLoading()" (click)="facade.loadMoreEvents()">
+              {{ facade.listLoading() ? 'Loading…' : 'Show more' }}
+            </button>
+            <span class="sv-meta">{{ facade.events().length }} of {{ facade.totalItems() }}</span>
+          </div>
+        }
       }
     </sv-page-layout>
   `,
@@ -45,6 +54,7 @@ import { RsvpAnswer } from '../../models/event.models';
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 14px; }
     .empty { grid-column: 1 / -1; text-align: center; padding: 32px; }
     .empty p { margin: 0 auto 16px; }
+    .more { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: 20px; }
   `,
 })
 export class EventsListPageComponent implements OnInit {

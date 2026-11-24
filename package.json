@@ -13,7 +13,8 @@
     "compodoc": "compodoc -p tsconfig.doc.json",
     "test:mock": "node --test mock-api/server.test.mjs",
     "api:lint": "redocly lint api/openapi.yaml",
-    "api:types": "npx -y openapi-typescript@7.13.0 api/openapi.yaml -o src/app/core/api/schema.d.ts"
+    "api:types": "npx -y openapi-typescript@7.13.0 api/openapi.yaml -o src/app/core/api/schema.d.ts",
+    "lint:layers": "node scripts/check-layers.mjs"
   },
   "private": true,
   "engines": {

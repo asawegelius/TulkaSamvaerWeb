@@ -3,7 +3,8 @@ import { FormArray, FormBuilder, FormControl, FormGroup, NonNullableFormBuilder,
 import type { Group, MemberRef } from '@core/platform/platform-api.service';
 import { FormLayoutComponent } from '@shared/layouts/form-layout/form-layout.component';
 import { VisibilityPickerComponent, VisibilityValue } from '@shared/components/visibility-picker/visibility-picker.component';
-import { toDateInput, toInstant, toTimeInput } from '../../models/event-format';
+import { TimeZoneService } from '@core/time/time-zone.service';
+import { addDays, fromWallTime, toWallTime } from '@core/time/zoned-time';
 import {
   EventDetail, EventInput, EventKind, KIND_LABELS, RECURRENCE_LABELS, Recurrence,
 } from '../../models/event.models';
@@ -38,6 +39,7 @@ export type EventFormValue = EventInput;
 })
 export class EventFormComponent {
   private readonly fb = inject(FormBuilder).nonNullable;
+  private readonly viewerZone = inject(TimeZoneService).timeZone;
 
   /** The event being edited, or null for a new one. */
   readonly event = input<EventDetail | null>(null);
@@ -52,6 +54,8 @@ export class EventFormComponent {
   protected readonly kinds = Object.entries(KIND_LABELS) as [EventKind, string][];
   protected readonly frequencies = Object.entries(RECURRENCE_LABELS) as [Recurrence['frequency'], string][];
   protected readonly isEdit = computed(() => this.event() !== null);
+  /** Every IANA zone the browser knows, for the time zone picker. */
+  protected readonly zones = Intl.supportedValuesOf('timeZone');
 
   protected readonly form = this.fb.group({
     kind: this.fb.control<EventKind>('GATHERING'),
@@ -61,6 +65,8 @@ export class EventFormComponent {
     endDate: this.fb.control('', Validators.required),
     endTime: this.fb.control('22:00'),
     allDay: this.fb.control(false),
+    // New events are planned in the viewer's zone; edits keep the event's zone.
+    timeZone: this.fb.control(this.viewerZone()),
     location: this.fb.control(''),
     description: this.fb.control(''),
     frequency: this.fb.control<Frequency>(''),
@@ -106,8 +112,10 @@ export class EventFormComponent {
       return;
     }
     const v = this.form.getRawValue();
-    const startsAt = toInstant(v.startDate, v.allDay ? '00:00' : v.startTime);
-    const endsAt = toInstant(v.endDate, v.allDay ? '23:59' : v.endTime);
+    const zone = v.timeZone;
+    // All-day: midnight to midnight after the last day, in the event's zone (exclusive end).
+    const startsAt = fromWallTime(v.startDate, v.allDay ? '00:00' : v.startTime, zone);
+    const endsAt = v.allDay ? fromWallTime(addDays(v.endDate, 1), '00:00', zone) : fromWallTime(v.endDate, v.endTime, zone);
     this.save.emit({
       kind: v.kind,
       title: v.title.trim(),
@@ -115,11 +123,12 @@ export class EventFormComponent {
       startsAt,
       endsAt,
       allDay: v.allDay,
+      timeZone: zone,
       location: v.location.trim() || null,
       visibility: v.visibility,
       programme: v.programme
         .filter((p) => p.title.trim() && p.date)
-        .map((p) => ({ startsAt: toInstant(p.date, p.time), title: p.title.trim() })),
+        .map((p) => ({ startsAt: fromWallTime(p.date, p.time, zone), title: p.title.trim() })),
       sleeping: v.sleeping
         .filter((s) => s.place.trim())
         .map((s) => ({ place: s.place.trim(), guestIds: s.guestIds, note: s.note.trim() || null })),
@@ -131,14 +140,18 @@ export class EventFormComponent {
   }
 
   private fill(event: EventDetail): void {
+    const zone = event.timeZone;
+    const start = toWallTime(event.startsAt, zone);
+    const end = toWallTime(event.endsAt, zone);
     this.form.patchValue({
       kind: event.kind,
       title: event.title,
-      startDate: toDateInput(event.startsAt),
-      startTime: toTimeInput(event.startsAt),
-      endDate: toDateInput(event.endsAt),
-      endTime: toTimeInput(event.endsAt),
+      startDate: start.date,
+      startTime: start.time,
+      endDate: event.allDay ? addDays(end.date, -1) : end.date,
+      endTime: end.time,
       allDay: event.allDay,
+      timeZone: zone,
       location: event.location ?? '',
       description: event.description ?? '',
       frequency: event.series?.recurrence.frequency ?? '',
@@ -146,7 +159,10 @@ export class EventFormComponent {
     });
     const programme = this.form.controls.programme;
     programme.clear();
-    event.programme.forEach((p) => programme.push(programmeRow(this.fb, toDateInput(p.startsAt), toTimeInput(p.startsAt), p.title)));
+    event.programme.forEach((p) => {
+      const at = toWallTime(p.startsAt, zone);
+      programme.push(programmeRow(this.fb, at.date, at.time, p.title));
+    });
     const sleeping = this.form.controls.sleeping;
     sleeping.clear();
     event.sleeping.forEach((s) => sleeping.push(sleepingRow(this.fb, s.place, s.guests.map((g) => g.id), s.note ?? '')));

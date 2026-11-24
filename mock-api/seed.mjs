@@ -1,19 +1,28 @@
 // Sample data for the mock API. Names and events are sample content.
 // Dates are relative to today so the mock always has upcoming events.
 
+import { addDays, fromWallTime, toWallTime } from './time.mjs';
+
 export const ME_ID = '00000000-0000-4000-8000-000000000001';
+/** Where the sample family lives. */
+export const HOME_ZONE = 'Europe/Copenhagen';
 
 const id = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 
-const member = (n, displayName, roles = ['MEMBER']) => ({
+const member = (n, displayName, roles = ['MEMBER'], timeZone = HOME_ZONE) => ({
   id: id(n),
   displayName,
   initials: displayName.slice(0, 1).toUpperCase(),
   avatarMediaId: null,
   roles,
+  timeZone,
 });
 
-export function createSeed(today = new Date()) {
+/**
+ * @param now        the current moment; sample dates are relative to it
+ * @param extraEvents extra public events, to try paging (MOCK_EXTRA_EVENTS)
+ */
+export function createSeed(now = new Date(), { extraEvents = 0 } = {}) {
   const members = [
     member(1, 'Åsa', ['ADMIN', 'INNER_CIRCLE', 'MEMBER']),
     member(2, 'Jonas', ['INNER_CIRCLE', 'MEMBER']),
@@ -21,7 +30,7 @@ export function createSeed(today = new Date()) {
     member(4, 'Kasper', ['INNER_CIRCLE', 'MEMBER']),
     member(5, 'Maja', ['INNER_CIRCLE', 'MEMBER']),
     member(6, 'Peter', ['INNER_CIRCLE', 'MEMBER']),
-    member(7, 'Henrik'),
+    member(7, 'Henrik', ['MEMBER'], 'America/New_York'),
     member(8, 'Line', ['INNER_CIRCLE', 'MEMBER']),
     member(9, 'Mormor', ['INNER_CIRCLE', 'MEMBER']),
     member(10, 'Morfar', ['INNER_CIRCLE', 'MEMBER']),
@@ -37,22 +46,14 @@ export function createSeed(today = new Date()) {
     { id: id(103), name: 'Cousins', ownerId: m(8), memberIds: [m(1), m(8), m(12), m(13)] },
   ];
 
-  const day = (offset, hh = 0, mm = 0) => {
-    const d = new Date(today);
-    d.setHours(hh, mm, 0, 0);
-    d.setDate(d.getDate() + offset);
-    return d.toISOString();
-  };
+  // Wall-clock times at home, `offset` days from today.
+  const todayAtHome = toWallTime(now.toISOString(), HOME_ZONE).date;
+  const day = (offset, hh = 0, mm = 0) => fromWallTime(addDays(todayAtHome, offset), `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`, HOME_ZONE);
 
   // Next Friday at least 10 days out, for the board game weekend.
   const fri = (() => {
     let o = 10;
-    const d = new Date(today);
-    d.setDate(d.getDate() + o);
-    while (d.getDay() !== 5) {
-      d.setDate(d.getDate() + 1);
-      o++;
-    }
+    while (new Date(`${addDays(todayAtHome, o)}T12:00:00Z`).getUTCDay() !== 5) o++;
     return o;
   })();
 
@@ -67,6 +68,7 @@ export function createSeed(today = new Date()) {
       startsAt: day(fri, 18),
       endsAt: day(fri + 2, 15),
       allDay: false,
+      timeZone: HOME_ZONE,
       location: 'Our house',
       hostId: m(1),
       visibility: { scope: 'GROUPS', groupIds: [id(102)] },
@@ -111,6 +113,7 @@ export function createSeed(today = new Date()) {
       startsAt: day(fri + 14, 13),
       endsAt: day(fri + 14, 18),
       allDay: false,
+      timeZone: HOME_ZONE,
       location: 'Our house',
       hostId: m(8),
       visibility: { scope: 'GROUPS', groupIds: [id(101), id(102)] },
@@ -132,6 +135,7 @@ export function createSeed(today = new Date()) {
       startsAt: day(fri + 30, 11),
       endsAt: day(fri + 30, 14),
       allDay: false,
+      timeZone: HOME_ZONE,
       location: 'Pottery studio',
       hostId: m(9),
       visibility: { scope: 'ALL_MEMBERS', groupIds: [] },
@@ -153,8 +157,9 @@ export function createSeed(today = new Date()) {
       title: 'Plan the garden beds',
       description: 'Just a note to myself.',
       startsAt: day(3, 0),
-      endsAt: day(3, 23, 59),
+      endsAt: day(4, 0),
       allDay: true,
+      timeZone: HOME_ZONE,
       location: null,
       hostId: m(1),
       visibility: { scope: 'ONLY_ME', groupIds: [] },
@@ -173,6 +178,7 @@ export function createSeed(today = new Date()) {
       startsAt: day(6, 18),
       endsAt: day(6, 22),
       allDay: false,
+      timeZone: HOME_ZONE,
       location: 'Line and Jens',
       hostId: m(8),
       visibility: { scope: 'GROUPS', groupIds: [id(103)] },
@@ -191,6 +197,7 @@ export function createSeed(today = new Date()) {
       startsAt: day(8, 12),
       endsAt: day(8, 13),
       allDay: false,
+      timeZone: HOME_ZONE,
       location: null,
       hostId: m(7),
       visibility: { scope: 'ONLY_ME', groupIds: [] },
@@ -204,18 +211,20 @@ export function createSeed(today = new Date()) {
   ];
 
   // Juleaften as a yearly series: this year and next.
-  const year = today.getMonth() === 11 && today.getDate() > 24 ? today.getFullYear() + 1 : today.getFullYear();
+  const [y, mo, d] = todayAtHome.split('-').map(Number);
+  const year = mo === 12 && d > 24 ? y + 1 : y;
   [0, 1].forEach((k) => {
-    const start = new Date(year + k, 11, 24, 15, 0);
-    const end = new Date(year + k, 11, 24, 23, 0);
+    const start = fromWallTime(`${year + k}-12-24`, '15:00', HOME_ZONE);
+    const end = fromWallTime(`${year + k}-12-24`, '23:00', HOME_ZONE);
     events.push({
       id: id(210 + k),
       kind: 'HOLIDAY',
       title: 'Juleaften at home',
       description: null,
-      startsAt: start.toISOString(),
-      endsAt: end.toISOString(),
+      startsAt: start,
+      endsAt: end,
       allDay: false,
+      timeZone: HOME_ZONE,
       location: 'Our house',
       hostId: m(1),
       visibility: { scope: 'GROUPS', groupIds: [id(101)] },
@@ -232,6 +241,29 @@ export function createSeed(today = new Date()) {
       version: 1,
     });
   });
+
+  // Extra open events, one every other day from next week, to try paging.
+  for (let k = 0; k < extraEvents; k++) {
+    events.push({
+      id: id(1000 + k),
+      kind: 'GATHERING',
+      title: `Morning walk ${k + 1}`,
+      description: null,
+      startsAt: day(7 + 2 * k, 9),
+      endsAt: day(7 + 2 * k, 10),
+      allDay: false,
+      timeZone: HOME_ZONE,
+      location: 'The lake',
+      hostId: m(2),
+      visibility: { scope: 'ALL_MEMBERS', groupIds: [] },
+      series: null,
+      answers: [{ memberId: m(2), status: 'GOING', note: null, invited: true }],
+      bringItems: [],
+      programme: [],
+      sleeping: [],
+      version: 1,
+    });
+  }
 
   return { members, groups, events };
 }

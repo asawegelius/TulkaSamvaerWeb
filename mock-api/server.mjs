@@ -5,11 +5,13 @@
 // Run: npm run mock:api          (port 3000, signed in as Åsa)
 //      MOCK_USER=<member uuid> npm run mock:api   to act as someone else
 //      MOCK_DELAY_MS=400 npm run mock:api        to see loading states
+//      MOCK_EXTRA_EVENTS=60 npm run mock:api     to try paging
 
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { createSeed, ME_ID } from './seed.mjs';
+import { addDays, addMonths, daysBetween, fromWallTime, isValidTimeZone, toWallTime } from './time.mjs';
 
 class ApiProblem extends Error {
   constructor(status, code, title, detail, fieldErrors) {
@@ -90,6 +92,7 @@ export function createMockApi({ seed = createSeed(), meId = ME_ID } = {}) {
       startsAt: ev.startsAt,
       endsAt: ev.endsAt,
       allDay: ev.allDay,
+      timeZone: ev.timeZone,
       location: ev.location,
       host: memberRef(ev.hostId),
       visibility: ev.visibility,
@@ -132,6 +135,12 @@ export function createMockApi({ seed = createSeed(), meId = ME_ID } = {}) {
     if (Number.isNaN(s)) errors.push({ field: 'startsAt', message: 'Pick a start.' });
     if (Number.isNaN(e)) errors.push({ field: 'endsAt', message: 'Pick an end.' });
     if (!Number.isNaN(s) && !Number.isNaN(e) && e <= s) errors.push({ field: 'endsAt', message: 'The end must be after the start.' });
+    const zoneOk = isValidTimeZone(body?.timeZone);
+    if (!zoneOk) errors.push({ field: 'timeZone', message: 'Unknown time zone.' });
+    if (zoneOk && body?.allDay && !Number.isNaN(s) && !Number.isNaN(e)
+      && (toWallTime(body.startsAt, body.timeZone).time !== '00:00' || toWallTime(body.endsAt, body.timeZone).time !== '00:00')) {
+      errors.push({ field: 'startsAt', message: 'All-day events start and end at midnight.' });
+    }
     const v = body?.visibility;
     if (!v || !['ONLY_ME', 'GROUPS', 'ALL_MEMBERS'].includes(v.scope)) errors.push({ field: 'visibility', message: 'Choose who can see it.' });
     else if (v.scope === 'GROUPS' && !(v.groupIds?.length > 0)) errors.push({ field: 'visibility.groupIds', message: 'Pick at least one group.' });
@@ -145,6 +154,7 @@ export function createMockApi({ seed = createSeed(), meId = ME_ID } = {}) {
     startsAt: new Date(body.startsAt).toISOString(),
     endsAt: new Date(body.endsAt).toISOString(),
     allDay: Boolean(body.allDay),
+    timeZone: body.timeZone,
     location: body.location ?? null,
     visibility: { scope: body.visibility.scope, groupIds: body.visibility.scope === 'GROUPS' ? body.visibility.groupIds : [] },
     programme: (body.programme ?? []).map((p) => ({ startsAt: new Date(p.startsAt).toISOString(), title: p.title })),
@@ -164,26 +174,35 @@ export function createMockApi({ seed = createSeed(), meId = ME_ID } = {}) {
     }
   };
 
-  const occurrenceStarts = (start, recurrence) => {
+  /**
+   * Calendar dates of a series' occurrences, in its own zone. The wall-clock time
+   * stays the same; the backend does this with ZonedDateTime.
+   */
+  const occurrenceDates = (firstDate, recurrence, timeZone) => {
     const out = [];
-    const until = recurrence.until ? Date.parse(`${recurrence.until}T23:59:59Z`) : Infinity;
-    const horizon = Date.now() + 2 * 366 * 864e5;
+    const horizon = addDays(toWallTime(new Date().toISOString(), timeZone).date, 2 * 366);
+    const step = recurrence.interval || 1;
     for (let k = 0; out.length < 24; k++) {
-      const d = new Date(start);
-      const n = k * (recurrence.interval || 1);
-      if (recurrence.frequency === 'WEEKLY') d.setDate(d.getDate() + 7 * n);
-      if (recurrence.frequency === 'MONTHLY') d.setMonth(d.getMonth() + n);
-      if (recurrence.frequency === 'YEARLY') d.setFullYear(d.getFullYear() + n);
-      if (d.getTime() > until || d.getTime() > horizon) break;
-      out.push(d);
+      const n = k * step;
+      const date = recurrence.frequency === 'WEEKLY' ? addDays(firstDate, 7 * n)
+        : recurrence.frequency === 'MONTHLY' ? addMonths(firstDate, n)
+        : addMonths(firstDate, 12 * n);
+      if ((recurrence.until && date > recurrence.until) || date > horizon) break;
+      out.push(date);
     }
     return out;
+  };
+
+  /** Moves an instant by whole days, keeping its wall-clock time in the zone. */
+  const shiftDays = (instant, days, timeZone) => {
+    const wall = toWallTime(instant, timeZone);
+    return fromWallTime(addDays(wall.date, days), wall.time, timeZone);
   };
 
   const handlers = [
     ['GET', /^\/api\/v1\/me$/, ({ viewer }) => {
       const mm = memberById(viewer);
-      return [200, { ...memberRef(viewer), roles: mm.roles }];
+      return [200, { ...memberRef(viewer), roles: mm.roles, timeZone: mm.timeZone }];
     }],
     ['GET', /^\/api\/v1\/me\/groups$/, ({ viewer }) => [200,
       groupsOf(viewer).map((g) => ({ id: g.id, name: g.name, memberCount: g.memberIds.length, mine: g.ownerId === viewer })),
@@ -198,13 +217,15 @@ export function createMockApi({ seed = createSeed(), meId = ME_ID } = {}) {
     ['GET', /^\/api\/v1\/events$/, ({ viewer, query }) => {
       const page = Math.max(0, Number(query.get('page') ?? 0));
       const size = Math.min(100, Math.max(1, Number(query.get('size') ?? 20)));
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const from = query.get('from') ? Date.parse(query.get('from')) : today.getTime();
-      const to = query.get('to') ? Date.parse(query.get('to')) + 864e5 : Infinity;
+      // Default: from the start of today in the member's own zone.
+      const zone = memberById(viewer).timeZone;
+      const startOfToday = fromWallTime(toWallTime(new Date().toISOString(), zone).date, '00:00', zone);
+      const from = Date.parse(query.get('from') ?? startOfToday);
+      const to = query.get('to') ? Date.parse(query.get('to')) : Infinity;
+      if (Number.isNaN(from) || Number.isNaN(to)) throw invalid([{ field: 'from', message: 'Use UTC instants like 2026-12-24T00:00:00Z.' }]);
       const visible = db.events
         .filter((e) => canSee(e, viewer))
-        .filter((e) => Date.parse(e.endsAt) >= from && Date.parse(e.startsAt) < to)
+        .filter((e) => Date.parse(e.endsAt) > from && Date.parse(e.startsAt) < to)
         .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
       return [200, {
         items: visible.slice(page * size, page * size + size).map((e) => toSummary(e, viewer)),
@@ -217,16 +238,16 @@ export function createMockApi({ seed = createSeed(), meId = ME_ID } = {}) {
       validateFields(body);
       const fields = normalisedFields(body);
       const series = body.recurrence ? { id: randomUUID(), recurrence: { interval: 1, until: null, ...body.recurrence } } : null;
-      const starts = series ? occurrenceStarts(new Date(fields.startsAt), series.recurrence) : [new Date(fields.startsAt)];
-      const duration = Date.parse(fields.endsAt) - Date.parse(fields.startsAt);
-      const created = starts.map((start) => {
-        const shift = start.getTime() - Date.parse(fields.startsAt);
+      const firstDate = toWallTime(fields.startsAt, fields.timeZone).date;
+      const dates = series ? occurrenceDates(firstDate, series.recurrence, fields.timeZone) : [firstDate];
+      const created = dates.map((date) => {
+        const shift = daysBetween(firstDate, date);
         const ev = {
           id: randomUUID(),
           ...fields,
-          startsAt: start.toISOString(),
-          endsAt: new Date(start.getTime() + duration).toISOString(),
-          programme: fields.programme.map((p) => ({ ...p, startsAt: new Date(Date.parse(p.startsAt) + shift).toISOString() })),
+          startsAt: shiftDays(fields.startsAt, shift, fields.timeZone),
+          endsAt: shiftDays(fields.endsAt, shift, fields.timeZone),
+          programme: fields.programme.map((p) => ({ ...p, startsAt: shiftDays(p.startsAt, shift, fields.timeZone) })),
           hostId: viewer,
           series,
           answers: [{ memberId: viewer, status: 'GOING', note: null, invited: true }],
@@ -335,8 +356,13 @@ export function createMockApi({ seed = createSeed(), meId = ME_ID } = {}) {
   return { handle, db: () => db };
 }
 
-export function startServer({ port = 3000, meId = process.env.MOCK_USER || ME_ID, delayMs = Number(process.env.MOCK_DELAY_MS ?? 0) } = {}) {
-  const api = createMockApi({ meId });
+export function startServer({
+  port = 3000,
+  meId = process.env.MOCK_USER || ME_ID,
+  delayMs = Number(process.env.MOCK_DELAY_MS ?? 0),
+  extraEvents = Number(process.env.MOCK_EXTRA_EVENTS ?? 0),
+} = {}) {
+  const api = createMockApi({ meId, seed: createSeed(new Date(), { extraEvents }) });
   const cors = {
     'Access-Control-Allow-Origin': process.env.MOCK_ORIGIN || 'http://localhost:4200',
     'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',

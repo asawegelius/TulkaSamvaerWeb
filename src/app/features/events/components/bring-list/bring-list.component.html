@@ -54,7 +54,7 @@
           </select>
         </div>
         <div class="buttons">
-          <button type="submit" class="sv-btn" [disabled]="pending() === 'add-item'">Add</button>
+          <button type="submit" class="sv-btn" [disabled]="addBusy()">Add</button>
           <button type="button" class="sv-btn sv-btn--secondary" (click)="adding.set(false)">Cancel</button>
         </div>
       </form>

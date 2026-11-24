@@ -22,7 +22,7 @@ npm run mock       # app on http://localhost:4200 against the mock
 
 `npm start` runs the app against a local backend on `http://localhost:8080`.
 
-The mock keeps its data in memory and resets on restart. To act as another member, set `MOCK_USER` to one of the member ids in `mock-api/seed.mjs`. Set `MOCK_DELAY_MS=400` to see loading states.
+The mock keeps its data in memory and resets on restart. To act as another member, set `MOCK_USER` to one of the member ids in `mock-api/seed.mjs`. Set `MOCK_DELAY_MS=400` to see loading states, and `MOCK_EXTRA_EVENTS=60` to try paging.
 
 ## Scripts
 
@@ -36,8 +36,9 @@ The mock keeps its data in memory and resets on restart. To act as another membe
 | `npm run test:mock` | Checks every mock answer against the contract's schemas. |
 | `npm run api:lint` | Lints the contract with Redocly. |
 | `npm run api:types` | Regenerates `src/app/core/api/schema.d.ts` from the contract. |
+| `npm run lint:layers` | Checks the dependency rules between core, shared, layout and features. |
 
-CI runs `build`, `test` and `contract` (lint, generated types up to date, mock matches the contract).
+CI runs `build`, `test` (layer rules and unit tests) and `contract` (lint, generated types up to date, mock matches the contract).
 
 ## Changing the API
 
@@ -52,11 +53,13 @@ CI runs `build`, `test` and `contract` (lint, generated types up to date, mock m
 api/openapi.yaml                 # the contract
 mock-api/                        # mock backend, seed data, contract tests
 src/app/
+  app.sections.ts                # section registry: menu and lazy routes
   core/
     api/                         # types generated from the contract
     http/                        # API URLs, ApiError (RFC 9457 problems), call state
+    time/                        # instants, dates and time zones for every section
     platform/                    # /me, groups and members
-    sections/sections.ts         # section registry: menu and lazy routes
+    sections/                    # SectionDefinition and the SECTIONS token (shape only)
   shared/
     theme/_tokens.scss           # style guide tokens, light and dark
     layouts/                     # PageLayout, FormLayout
@@ -70,11 +73,15 @@ src/app/
     events.routes.ts
 ```
 
-Dependency rules from the template still apply: `core` imports nothing from features, layout or shared UI; `shared` imports nothing from core or features; features never import each other. Use `@core/*`, `@shared/*`, `@layout/*` and `@features/*` across layers.
+Dependency rules from the template still apply: `core` imports nothing from features, layout or shared UI; `shared` imports nothing from core or features; features never import each other. Use `@core/*`, `@shared/*` and `@layout/*` across layers. Only the root files (`app.sections.ts`, `app.routes.ts`, `app.config.ts`) import features.
 
 ### Adding a section
 
-Create `src/app/features/<key>/` with `<key>.routes.ts`, add one entry to `SECTIONS` in `core/sections/sections.ts`, add its paths to the contract and the mock. The menu entry and lazy route appear automatically.
+Create `src/app/features/<key>/` with `<key>.routes.ts`, add one entry to `APP_SECTIONS` in `app.sections.ts`, add its paths to the contract and the mock. The menu entry and lazy route appear automatically.
+
+## Dates and time zones
+
+Every section follows [docs/dates-and-time-zones.md](docs/dates-and-time-zones.md): moments are UTC `Instant`s, plain dates are `LocalDate`s, and anything planned on a wall clock carries its IANA `timeZone`. Use the helpers in `core/time/` rather than the machine's local time.
 
 ## Look and feel
 

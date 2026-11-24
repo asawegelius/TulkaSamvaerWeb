@@ -11,8 +11,12 @@ info:
 
     - Paths are `/api/v1/<section>/<resource>`, plural nouns, kebab-case.
     - IDs are UUIDs.
-    - Dates are ISO 8601. Calendar dates as `2026-12-24`, instants in UTC as
-      `2026-12-24T17:00:00Z`. The client shows local time.
+    - Dates and times follow docs/dates-and-time-zones.md, for every section:
+      - `Instant`: a moment, always UTC with `Z` (`2026-12-24T14:00:00Z`).
+      - `LocalDate`: a calendar date without time or zone (`2026-12-24`).
+      - `TimeZone`: an IANA zone (`Europe/Copenhagen`). Anything planned on a wall
+        clock (an event at 18:00, a yearly birthday) carries the zone it was planned in.
+      - All-day items end at the start of the day after their last day (exclusive end).
     - Lists are paged: `?page=0&size=20`, answered with `{ items, page, size, totalItems }`.
     - Every shareable item carries `visibility: { scope, groupIds }`.
     - Every item carries `allowedActions`. The frontend shows buttons from this list
@@ -97,12 +101,14 @@ paths:
       parameters:
         - name: from
           in: query
-          description: First calendar date to include. Defaults to today.
-          schema: { type: string, format: date }
+          description: |
+            Events that end after this moment. Defaults to the start of today in the
+            member's time zone (`Me.timeZone`).
+          schema: { $ref: '#/components/schemas/Instant' }
         - name: to
           in: query
-          description: Last calendar date to include. Open-ended when left out.
-          schema: { type: string, format: date }
+          description: Events that start before this moment. Open-ended when left out.
+          schema: { $ref: '#/components/schemas/Instant' }
         - { $ref: '#/components/parameters/Page' }
         - { $ref: '#/components/parameters/Size' }
       responses:
@@ -379,6 +385,25 @@ components:
       type: string
       format: uuid
 
+    Instant:
+      description: A moment in time, in UTC with a `Z` suffix. See docs/dates-and-time-zones.md.
+      type: string
+      format: date-time
+      pattern: 'Z$'
+      examples: ['2026-12-24T14:00:00Z']
+
+    LocalDate:
+      description: A calendar date without time or zone.
+      type: string
+      format: date
+      examples: ['2026-12-24']
+
+    TimeZone:
+      description: An IANA time zone name.
+      type: string
+      minLength: 1
+      examples: [Europe/Copenhagen]
+
     Problem:
       description: RFC 9457 problem details.
       type: object
@@ -418,8 +443,11 @@ components:
       allOf:
         - { $ref: '#/components/schemas/MemberRef' }
         - type: object
-          required: [roles]
+          required: [roles, timeZone]
           properties:
+            timeZone:
+              $ref: '#/components/schemas/TimeZone'
+              description: The member's own zone, used to show times and to work out "today".
             roles:
               type: array
               items:
@@ -482,7 +510,10 @@ components:
           examples: [Arriving Saturday morning]
 
     Recurrence:
-      description: How a series repeats. Birthdays and Christmas are YEARLY.
+      description: |
+        How a series repeats. Birthdays and Christmas are YEARLY. Occurrences keep
+        the same wall-clock time in the event's `timeZone`, so 13:00 stays 13:00
+        across daylight saving.
       type: object
       required: [frequency, interval]
       properties:
@@ -495,9 +526,10 @@ components:
           default: 1
           description: Every n weeks, months or years.
         until:
-          type: [string, 'null']
-          format: date
-          description: Last possible date. Open-ended when null.
+          description: Last possible date, in the event's time zone. Open-ended when null.
+          oneOf:
+            - $ref: '#/components/schemas/LocalDate'
+            - type: 'null'
 
     SeriesInfo:
       type: object
@@ -559,7 +591,7 @@ components:
       type: object
       required: [startsAt, title]
       properties:
-        startsAt: { type: string, format: date-time }
+        startsAt: { $ref: '#/components/schemas/Instant' }
         title: { type: string, maxLength: 120, examples: [Arrive, dinner, a quick warm-up game] }
 
     SleepingSpot:
@@ -588,14 +620,19 @@ components:
     EventSummary:
       description: What an event card in a list needs.
       type: object
-      required: [id, kind, title, startsAt, endsAt, allDay, host, visibility, audienceLabel, myRsvp, rsvpSummary, bringList, allowedActions]
+      required: [id, kind, title, startsAt, endsAt, allDay, timeZone, host, visibility, audienceLabel, myRsvp, rsvpSummary, bringList, allowedActions]
       properties:
         id: { $ref: '#/components/schemas/Id' }
         kind: { $ref: '#/components/schemas/EventKind' }
         title: { type: string, maxLength: 120, examples: [Board game weekend] }
-        startsAt: { type: string, format: date-time }
-        endsAt: { type: string, format: date-time }
+        startsAt: { $ref: '#/components/schemas/Instant' }
+        endsAt:
+          $ref: '#/components/schemas/Instant'
+          description: Exclusive. For all-day events, the start of the day after the last day.
         allDay: { type: boolean }
+        timeZone:
+          $ref: '#/components/schemas/TimeZone'
+          description: The zone the event was planned in. The UI shows its times in this zone.
         location: { type: [string, 'null'], maxLength: 120, examples: [Our house] }
         host: { $ref: '#/components/schemas/MemberRef' }
         visibility: { $ref: '#/components/schemas/Visibility' }
@@ -655,17 +692,19 @@ components:
 
     EventFields:
       type: object
-      required: [kind, title, startsAt, endsAt, allDay, visibility]
+      required: [kind, title, startsAt, endsAt, allDay, timeZone, visibility]
       properties:
         kind: { $ref: '#/components/schemas/EventKind' }
         title: { type: string, minLength: 1, maxLength: 120 }
         description: { type: [string, 'null'], maxLength: 4000 }
-        startsAt: { type: string, format: date-time }
+        startsAt: { $ref: '#/components/schemas/Instant' }
         endsAt:
-          type: string
-          format: date-time
-          description: Must be after startsAt.
-        allDay: { type: boolean }
+          $ref: '#/components/schemas/Instant'
+          description: Must be after startsAt. Exclusive; for all-day events, midnight after the last day.
+        allDay:
+          type: boolean
+          description: When true, startsAt and endsAt must be midnight in timeZone.
+        timeZone: { $ref: '#/components/schemas/TimeZone' }
         location: { type: [string, 'null'], maxLength: 120 }
         visibility: { $ref: '#/components/schemas/Visibility' }
         programme:

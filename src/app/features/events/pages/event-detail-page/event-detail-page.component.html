@@ -14,7 +14,7 @@
       @if (can('cancel')) { <button type="button" class="sv-btn sv-btn--danger" [disabled]="facade.saving()" (click)="cancelEvent()">Cancel event</button> }
     </div>
 
-    @if (facade.error(); as error) {
+    @if (pageError(); as error) {
       <div class="sv-card notice" role="alert">
         <span>{{ error.message }}</span>
         <button type="button" class="sv-btn sv-btn--quiet sv-btn--small" (click)="facade.dismissError()">OK</button>
@@ -26,13 +26,13 @@
         <section class="sv-card">
           @if (can('rsvp')) {
             <h2>Are you coming?</h2>
-            <app-rsvp-control [status]="e.myRsvp" [eventTitle]="e.title" [disabled]="facade.pending() === 'rsvp'" (answer)="answer($event)" />
+            <app-rsvp-control [status]="e.myRsvp" [eventTitle]="e.title" [disabled]="facade.isPending(facade.keys.rsvp(e.id))" (answer)="answer($event)" />
           }
           @if (e.description) { <p class="desc">{{ e.description }}</p> }
           <app-attendee-list [attendees]="e.attendees" />
         </section>
 
-        <app-bring-list [items]="e.bringItems" [canAdd]="can('add-bring-item')" [pending]="facade.pending()"
+        <app-bring-list [eventId]="e.id" [items]="e.bringItems" [canAdd]="can('add-bring-item')" [pending]="facade.pending()"
                         (claim)="claim($event)" (unclaim)="unclaim($event)" (remove)="remove($event)" (add)="add($event)" />
       </div>
 
@@ -42,7 +42,7 @@
             <h2>Programme</h2>
             <ul class="sv-list prog">
               @for (p of e.programme; track $index) {
-                <li><span class="sv-meta t">{{ time(p.startsAt) }}</span><span>{{ p.title }}</span></li>
+                <li><span class="sv-meta t">{{ time(p.startsAt, e.timeZone) }}</span><span>{{ p.title }}</span></li>
               }
             </ul>
           </section>

@@ -7,7 +7,8 @@ import { AttendeeListComponent } from '../../components/attendee-list/attendee-l
 import { BringListComponent } from '../../components/bring-list/bring-list.component';
 import { RsvpControlComponent } from '../../components/rsvp-control/rsvp-control.component';
 import { EventsFacade } from '../../facade/events.facade';
-import { formatProgrammeTime, formatWhen } from '../../models/event-format';
+import { TimeZoneService } from '@core/time/time-zone.service';
+import { formatEventWhen, formatProgrammeTime } from '../../models/event-format';
 import { BringItemInput, KIND_LABELS, RECURRENCE_LABELS, RsvpAnswer } from '../../models/event.models';
 
 @Component({
@@ -31,9 +32,10 @@ export class EventDetailPageComponent {
     const e = this.facade.selected();
     return e && e.id === this.eventId() ? e : null;
   });
+  private readonly viewerZone = inject(TimeZoneService).timeZone;
   protected readonly when = computed(() => {
     const e = this.event();
-    return e ? formatWhen(e.startsAt, e.endsAt, e.allDay) : '';
+    return e ? formatEventWhen(e, this.viewerZone()) : '';
   });
   protected readonly kindLabel = computed(() => (this.event() ? KIND_LABELS[this.event()!.kind] : ''));
   protected readonly repeatLabel = computed(() => {
@@ -41,6 +43,11 @@ export class EventDetailPageComponent {
     return s ? RECURRENCE_LABELS[s.recurrence.frequency] : '';
   });
   protected readonly time = formatProgrammeTime;
+  /** A failed change about this event, or one not about any event. Errors from other events stay on their pages. */
+  protected readonly pageError = computed(() => {
+    const about = this.facade.errorEventId();
+    return about === null || about === this.eventId() ? this.facade.error() : null;
+  });
 
   constructor() {
     effect(() => this.facade.openEvent(this.eventId()));

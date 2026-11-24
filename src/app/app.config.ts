@@ -8,12 +8,15 @@ import { provideStore } from '@ngrx/store';
 import { provideStoreDevtools } from '@ngrx/store-devtools';
 import { environment } from '../environments/environment';
 import { APP_ROUTES } from './app.routes';
+import { APP_SECTIONS } from './app.sections';
+import { SECTIONS } from '@core/sections/section-definition';
 import { reducers, metaReducers } from '@core/state/app-state';
 import { RouterSerializer } from '@core/routing/router-serializer';
 
 export const appConfig: ApplicationConfig = {
   providers: [
     provideRouter(APP_ROUTES, withComponentInputBinding()),
+    { provide: SECTIONS, useValue: APP_SECTIONS },
     // Spring Security's session cookie and CSRF token, per the architecture doc.
     provideHttpClient(withXhr(), withXsrfConfiguration({ cookieName: 'XSRF-TOKEN', headerName: 'X-XSRF-TOKEN' })),
     provideAnimations(),

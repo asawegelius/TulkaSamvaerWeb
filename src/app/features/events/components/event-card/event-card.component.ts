@@ -1,7 +1,8 @@
-import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { IconComponent } from '@shared/components/icon/icon.component';
-import { formatWhen } from '../../models/event-format';
+import { TimeZoneService } from '@core/time/time-zone.service';
+import { formatEventWhen } from '../../models/event-format';
 import { EventSummary, KIND_LABELS, RECURRENCE_LABELS, RsvpAnswer } from '../../models/event.models';
 import { RsvpControlComponent } from '../rsvp-control/rsvp-control.component';
 
@@ -52,7 +53,8 @@ export class EventCardComponent {
   readonly busy = input(false);
   readonly answer = output<RsvpAnswer>();
 
-  protected readonly when = computed(() => formatWhen(this.event().startsAt, this.event().endsAt, this.event().allDay));
+  private readonly viewerZone = inject(TimeZoneService).timeZone;
+  protected readonly when = computed(() => formatEventWhen(this.event(), this.viewerZone()));
   protected readonly kindLabel = computed(() => KIND_LABELS[this.event().kind]);
   protected readonly repeatLabel = computed(() => {
     const series = this.event().series;
